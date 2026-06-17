@@ -377,7 +377,7 @@
       formData.append('file', selectedFile);
 
       try {
-        const res = await fetch('/process', { method: 'POST', body: formData });
+        const res = await fetch('/classify', { method: 'POST', body: formData });
 
         if (!res.ok) {
           const err = await res.json();
