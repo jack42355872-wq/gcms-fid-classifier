@@ -254,4 +254,101 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
         ('C16+  (conc%)',            c16plus),
         ('  Aromatic',               round(sums_816.get('Aromatic',     0.0), 2)),
         ('  Polyaromatic',           round(sums_816.get('Polyaromatic', 0.0), 2)),
-        ('  n-alkane',               round(sums_816.get('n-alkane'
+        ('  n-alkane',               round(sums_816.get('n-alkane',     0.0), 2)),
+        ('  iso-alkane',             round(sums_816.get('iso-alkane',   0.0), 2)),
+        ('  cyclic',                 round(sums_816.get('cyclic',       0.0), 2)),
+        ('  Alkene',                 round(sums_816.get('Alkene',       0.0), 2)),
+        ('  others',                 round(sums_816.get('others',       0.0), 2)),
+        ('Total check (sum)',         grand_total),
+        ('All Conc. sum',            all_conc_sum),
+        ('Δ error',                  round(error, 4)),
+        ('PASS / FAIL',              'PASS ✓' if passed else f'FAIL (Δ={round(error,4)})'),
+        ('Auto-classified rows',     auto_classified_count),
+    ]
+
+    for offset, (label, value) in enumerate(report_rows):
+        r = report_start_row + 1 + offset
+        ws.cell(row=r, column=1).value = label
+        ws.cell(row=r, column=2).value = value
+        ws.cell(row=r, column=1).font  = Font(size=10)
+        ws.cell(row=r, column=2).font  = Font(bold=True, size=10)
+        if label == 'PASS / FAIL':
+            color = 'C6EFCE' if passed else 'FFC7CE'
+            ws.cell(row=r, column=2).fill = PatternFill(
+                start_color=color, end_color=color, fill_type='solid')
+
+    # 若有 others 清單就列出來
+    if others_816:
+        others_start = report_start_row + 1 + len(report_rows) + 1
+        ws.cell(row=others_start, column=1).value = 'Unclassified (others) in C8-16'
+        ws.cell(row=others_start, column=1).font  = Font(bold=True, color='FF0000')
+        for i, rec in enumerate(others_816):
+            r = others_start + 1 + i
+            ws.cell(row=r, column=1).value = rec.get('Name', '')
+            ws.cell(row=r, column=2).value = rec.get('Ret.Time', '')
+            ws.cell(row=r, column=3).value = rec.get('Conc.', '')
+
+    # 儲存
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+
+    validation_report = {
+        'c8minus':    c8minus,
+        'c816_total': c816_total,
+        'c16plus':    c16plus,
+        'grand_total':    grand_total,
+        'all_conc_sum':   all_conc_sum,
+        'error':          round(error, 4),
+        'passed':         passed,
+        'auto_classified': auto_classified_count,
+        'others_816':     others_816,
+        'sums_816': {k: round(v, 2) for k, v in sums_816.items()},
+    }
+
+    return out.read(), validation_report
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/classify', methods=['POST'])
+def classify():
+    if 'file' not in request.files:
+        return jsonify({'error': '沒有收到檔案'}), 400
+
+    f = request.files['file']
+    if not f.filename.endswith('.xlsx'):
+        return jsonify({'error': '只接受 .xlsx 格式'}), 400
+
+    file_bytes = f.read()
+    original_filename = secure_filename(f.filename)
+
+    try:
+        result_bytes, report = process_gcms_file(file_bytes, original_filename)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    stem = original_filename.rsplit('.', 1)[0]
+    out_filename = f"{stem}_分類.xlsx"
+
+    response = send_file(
+        io.BytesIO(result_bytes),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=out_filename,
+    )
+    response.headers['X-C8minus']    = str(report['c8minus'])
+    response.headers['X-C816total']  = str(report['c816_total'])
+    response.headers['X-C16plus']    = str(report['c16plus'])
+    response.headers['X-GrandTotal'] = str(report['grand_total'])
+    response.headers['X-Passed']     = str(report['passed'])
+    response.headers['X-AutoClass']  = str(report['auto_classified'])
+    return response
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
