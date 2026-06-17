@@ -9,6 +9,8 @@ import pandas as pd
 from flask import Flask, request, send_file, render_template, jsonify
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.chart import BarChart, Reference
+from openpyxl.chart.series import DataPoint
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -108,56 +110,7 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
     data.loc[mask_empty, 'Category'] = data.loc[mask_empty, 'Name'].apply(auto_classify)
     auto_classified_count = int(mask_empty.sum())
 
-    # Step 4: 加顏色到原始 Excel
-    wb = load_workbook(io.BytesIO(file_bytes))
-    ws = wb['Sheet1']
-    DATA_START_ROW = header_row_idx + 2  # Excel 1-indexed + skip header row
-
-    # 同時寫入 Category 欄到 Excel（若原本沒有，新增在最後一欄之後）
-    # 找 Category 欄在 Excel 的位置
-    cat_col_excel = None
-    name_col_excel = None
-    for cell in ws[header_row_idx + 1]:  # header row in Excel (1-indexed)
-        v = str(cell.value).strip().replace('\xa0', '') if cell.value else ''
-        if v == 'Category':
-            cat_col_excel = cell.column
-        if v == 'Name':
-            name_col_excel = cell.column
-
-    # 若沒有 Category 欄，在最後一欄後新增
-    if cat_col_excel is None:
-        cat_col_excel = ws.max_column + 1
-        ws.cell(row=header_row_idx + 1, column=cat_col_excel, value='Category').font = Font(bold=True)
-
-    # 也新增 Distribution 欄
-    dist_col_excel = cat_col_excel + 1
-    if ws.cell(row=header_row_idx + 1, column=dist_col_excel).value != 'Distribution':
-        ws.cell(row=header_row_idx + 1, column=dist_col_excel, value='Distribution').font = Font(bold=True)
-
-    for idx, row_data in data.iterrows():
-        excel_row = DATA_START_ROW + idx
-        rt        = row_data['Ret.Time']
-        category  = row_data['Category']
-
-        # 寫入 Category 和 Distribution
-        ws.cell(row=excel_row, column=cat_col_excel).value = category
-        if pd.notna(rt):
-            if rt < RT_C8_MINUS_MAX:
-                dist = 'C8-'
-            elif rt <= RT_C816_MAX:
-                dist = 'C8-16'
-            else:
-                dist = 'C16+'
-            ws.cell(row=excel_row, column=dist_col_excel).value = dist
-
-        # 對 C8-16 範圍加顏色
-        if pd.notna(rt) and RT_C8_MINUS_MAX <= rt <= RT_C816_MAX and category in COLOR_MAP:
-            fill = PatternFill(start_color=COLOR_MAP[category],
-                               end_color=COLOR_MAP[category], fill_type='solid')
-            for col_idx in range(1, ws.max_column + 1):
-                ws.cell(row=excel_row, column=col_idx).fill = fill
-
-    # Step 5: 計算加總
+    # Step 4: 計算加總（在寫 Excel 之前先算好，避免後續 insert_rows 影響）
     mask_c8m  = data['Ret.Time'] < RT_C8_MINUS_MAX
     mask_c816 = (data['Ret.Time'] >= RT_C8_MINUS_MAX) & (data['Ret.Time'] <= RT_C816_MAX)
     mask_c16p = data['Ret.Time'] > RT_C816_MAX
@@ -172,7 +125,17 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
     n_val     = sums_816.get('n-alkane',   0.0)
     i_n_ratio = round(iso_val / n_val, 2) if n_val > 0 else 0.0
 
-    # Step 6: 找或新增 Summary 表格
+    grand_total    = c8minus + c816_total + c16plus
+    all_conc_sum   = round(data['Conc.'].sum(), 2)
+    error          = abs(grand_total - all_conc_sum)
+    passed         = error < 0.01
+    others_816     = filt816[filt816['Category'] == 'others'][['Ret.Time', 'Name', 'Conc.']].to_dict('records')
+
+    # Step 5: 開啟 Excel 並決定 Summary 區域位置
+    wb = load_workbook(io.BytesIO(file_bytes))
+    ws = wb['Sheet1']
+
+    # 先確認原始 Excel 有沒有 Summary 表格
     summary_header_row = None
     for row in ws.iter_rows():
         for cell in row:
@@ -182,30 +145,83 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
         if summary_header_row:
             break
 
-    # 若原始檔沒有 Summary 表格，在 Peak Table header 上面兩列新增
+    rows_inserted = 0
     if summary_header_row is None:
-        summary_header_row = max(1, header_row_idx - 1)  # 在 header 上方插入
-        ws.insert_rows(summary_header_row, amount=2)
-        # 重新計算 DATA_START_ROW（插入了 2 列）
-        DATA_START_ROW += 2
+        # 在 Peak Table header 上方插入 Summary（4 列：空行 + header + values + 空行）
+        insert_at = header_row_idx + 1  # Excel 1-based，header_row_idx 是 0-based
+        ws.insert_rows(insert_at, amount=4)
+        rows_inserted = 4
+        summary_header_row = insert_at
 
-        # 寫入 Summary header
-        summary_labels = ['C8-', 'C8-16', 'C16+', 'i/n',
-                          'alkene', 'aromatic', 'cyclic', 'iso', 'n-alkane', 'others', 'poly']
-        header_colors  = ['FFD966', 'FFD966', 'FFD966', 'FFD966',
-                          'ADD8E6', '92D050', 'FFD700', 'FF6600', 'FF8C00', 'FA8072', 'C5B0D5']
+    # DATA_START_ROW 要加上插入的列數
+    DATA_START_ROW = header_row_idx + 2 + rows_inserted  # Excel 1-indexed
+
+    # Step 6: 找 Category 欄位置（insert_rows 之後重新掃 header）
+    peak_header_excel_row = header_row_idx + 1 + rows_inserted
+    cat_col_excel  = None
+    name_col_excel = None
+    for cell in ws[peak_header_excel_row]:
+        v = str(cell.value).strip().replace('\xa0', '') if cell.value else ''
+        if v == 'Category':
+            cat_col_excel = cell.column
+        if v == 'Name':
+            name_col_excel = cell.column
+
+    if cat_col_excel is None:
+        cat_col_excel = ws.max_column + 1
+        ws.cell(row=peak_header_excel_row, column=cat_col_excel, value='Category').font = Font(bold=True)
+
+    dist_col_excel = cat_col_excel + 1
+    if ws.cell(row=peak_header_excel_row, column=dist_col_excel).value != 'Distribution':
+        ws.cell(row=peak_header_excel_row, column=dist_col_excel, value='Distribution').font = Font(bold=True)
+
+    # Step 7: 對 Peak Table 加顏色，只染 actual data rows
+    # 用 data 的 index（0-based），對應 excel row = DATA_START_ROW + idx
+    for idx, row_data in data.iterrows():
+        excel_row = DATA_START_ROW + idx
+        rt        = row_data['Ret.Time']
+        category  = row_data['Category']
+
+        ws.cell(row=excel_row, column=cat_col_excel).value = category
+        if pd.notna(rt):
+            if rt < RT_C8_MINUS_MAX:
+                dist = 'C8-'
+            elif rt <= RT_C816_MAX:
+                dist = 'C8-16'
+            else:
+                dist = 'C16+'
+            ws.cell(row=excel_row, column=dist_col_excel).value = dist
+
+        # 只對 C8-16 範圍加顏色
+        if pd.notna(rt) and RT_C8_MINUS_MAX <= rt <= RT_C816_MAX and category in COLOR_MAP:
+            fill = PatternFill(start_color=COLOR_MAP[category],
+                               end_color=COLOR_MAP[category], fill_type='solid')
+            for col_idx in range(1, ws.max_column + 1):
+                ws.cell(row=excel_row, column=col_idx).fill = fill
+
+    # Step 8: 寫 Summary 表格
+    SUMMARY_VALUES_ROW = summary_header_row + 1
+
+    summary_labels = ['C8-', 'C8-16', 'C16+', 'i/n',
+                      'alkene', 'aromatic', 'cyclic', 'iso', 'n-alkane', 'others', 'poly']
+    header_colors  = ['FFD966', 'FFD966', 'FFD966', 'FFD966',
+                      'ADD8E6', '92D050', 'FFD700', 'FF6600', 'FF8C00', 'FA8072', 'C5B0D5']
+
+    col_map = {}
+    # 先看 header row 有沒有既有欄位
+    for cell in ws[summary_header_row]:
+        if cell.value:
+            col_map[str(cell.value).strip()] = cell.column
+
+    # 若是新插入的（空的），寫入標題
+    if not col_map:
         for col_offset, (label, color) in enumerate(zip(summary_labels, header_colors)):
             cell = ws.cell(row=summary_header_row, column=col_offset + 1)
             cell.value     = label
             cell.font      = Font(bold=True)
             cell.alignment = Alignment(horizontal='center')
             cell.fill      = PatternFill(start_color=color, end_color=color, fill_type='solid')
-
-    SUMMARY_VALUES_ROW = summary_header_row + 1
-    col_map = {}
-    for cell in ws[summary_header_row]:
-        if cell.value:
-            col_map[str(cell.value).strip()] = cell.column
+            col_map[label] = col_offset + 1
 
     value_map = {
         'C8-':      c8minus,
@@ -230,24 +246,68 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
             cell.fill          = PatternFill(start_color='FFF2CC',
                                              end_color='FFF2CC', fill_type='solid')
 
-    # Step 7: 驗證
-    grand_total    = c8minus + c816_total + c16plus
-    all_conc_sum   = round(data['Conc.'].sum(), 2)
-    error          = abs(grand_total - all_conc_sum)
-    passed         = error < 0.01
-    others_816     = filt816[filt816['Category'] == 'others'][['Ret.Time', 'Name', 'Conc.']].to_dict('records')
+    # Step 9: 視覺化圖表（BarChart，仿網頁樣式）
+    # 在 Summary 右側寫入圖表資料再畫圖
+    chart_data_col = len(summary_labels) + 3  # Summary 欄之後空 2 欄
+    chart_labels   = ['Aromatic', 'Polyaromatic', 'n-alkane', 'iso-alkane', 'cyclic', 'Alkene', 'others']
+    chart_values   = [
+        round(sums_816.get('Aromatic',     0.0), 2),
+        round(sums_816.get('Polyaromatic', 0.0), 2),
+        round(sums_816.get('n-alkane',     0.0), 2),
+        round(sums_816.get('iso-alkane',   0.0), 2),
+        round(sums_816.get('cyclic',       0.0), 2),
+        round(sums_816.get('Alkene',       0.0), 2),
+        round(sums_816.get('others',       0.0), 2),
+    ]
 
-    # Step 8: 把驗證報告寫入 xlsx（Summary 表格下方空一列後新增）
-    report_start_row = SUMMARY_VALUES_ROW + 2
+    # 寫圖表資料到隱藏欄位
+    ws.cell(row=summary_header_row, column=chart_data_col).value = 'Category'
+    ws.cell(row=summary_header_row, column=chart_data_col + 1).value = 'Conc%'
+    for i, (lbl, val) in enumerate(zip(chart_labels, chart_values)):
+        ws.cell(row=summary_header_row + 1 + i, column=chart_data_col).value = lbl
+        ws.cell(row=summary_header_row + 1 + i, column=chart_data_col + 1).value = val
 
-    # 標題列
+    # 建立 BarChart
+    chart = BarChart()
+    chart.type    = 'col'
+    chart.grouping = 'clustered'
+    chart.title   = 'C8-16 Category Distribution (%)'
+    chart.y_axis.title = 'Conc. %'
+    chart.x_axis.title = 'Category'
+    chart.width   = 18
+    chart.height  = 12
+
+    data_ref = Reference(ws,
+                         min_col=chart_data_col + 1,
+                         min_row=summary_header_row,
+                         max_row=summary_header_row + len(chart_labels))
+    cats_ref = Reference(ws,
+                         min_col=chart_data_col,
+                         min_row=summary_header_row + 1,
+                         max_row=summary_header_row + len(chart_labels))
+
+    chart.add_data(data_ref, titles_from_data=True)
+    chart.set_categories(cats_ref)
+
+    # 對每個 bar 設對應顏色
+    bar_colors = ['92D050', 'C5B0D5', 'FF8C00', 'FF6600', 'FFD700', 'ADD8E6', 'FA8072']
+    for idx, color in enumerate(bar_colors):
+        pt = DataPoint(idx=idx)
+        pt.graphicalProperties.solidFill = color
+        chart.series[0].dPt.append(pt)
+
+    # 圖表放在 Summary 下方
+    chart_anchor = f'A{SUMMARY_VALUES_ROW + 2}'
+    ws.add_chart(chart, chart_anchor)
+
+    # Step 10: 驗證報告（寫在圖表下方，約 20 列後）
+    report_start_row = SUMMARY_VALUES_ROW + 22
+
     title_cell = ws.cell(row=report_start_row, column=1)
     title_cell.value = 'Validation Report'
-    title_cell.font  = Font(bold=True, size=11)
     title_cell.fill  = PatternFill(start_color='2B6CB0', end_color='2B6CB0', fill_type='solid')
     title_cell.font  = Font(bold=True, color='FFFFFF', size=11)
 
-    # 各項數值
     report_rows = [
         ('C8-  (conc%)',             c8minus),
         ('C8-16  (conc%)',           c816_total),
@@ -276,90 +336,3 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
             color = 'C6EFCE' if passed else 'FFC7CE'
             ws.cell(row=r, column=2).fill = PatternFill(
                 start_color=color, end_color=color, fill_type='solid')
-
-    # 若有 others 清單就列出來
-    if others_816:
-        others_start = report_start_row + 1 + len(report_rows) + 1
-        ws.cell(row=others_start, column=1).value = 'Unclassified (others) in C8-16'
-        ws.cell(row=others_start, column=1).font  = Font(bold=True, color='FF0000')
-        for i, rec in enumerate(others_816):
-            r = others_start + 1 + i
-            ws.cell(row=r, column=1).value = rec.get('Name', '')
-            ws.cell(row=r, column=2).value = rec.get('Ret.Time', '')
-            ws.cell(row=r, column=3).value = rec.get('Conc.', '')
-
-    # 儲存
-    out = io.BytesIO()
-    wb.save(out)
-    out.seek(0)
-
-    validation_report = {
-        'c8minus':    c8minus,
-        'c816_total': c816_total,
-        'c16plus':    c16plus,
-        'grand_total':    grand_total,
-        'all_conc_sum':   all_conc_sum,
-        'error':          round(error, 4),
-        'passed':         passed,
-        'auto_classified': auto_classified_count,
-        'others_816':     others_816,
-        'sums_816': {k: round(v, 2) for k, v in sums_816.items()},
-    }
-
-    return out.read(), validation_report
-
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-
-@app.route('/classify', methods=['POST'])
-def classify():
-    if 'file' not in request.files:
-        return jsonify({'error': '沒有收到檔案'}), 400
-
-    f = request.files['file']
-    if not f.filename.endswith('.xlsx'):
-        return jsonify({'error': '只接受 .xlsx 格式'}), 400
-
-    file_bytes = f.read()
-    original_filename = secure_filename(f.filename)
-
-    try:
-        result_bytes, report = process_gcms_file(file_bytes, original_filename)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-    stem = original_filename.rsplit('.', 1)[0]
-    out_filename = f"{stem}_分類.xlsx"
-
-    response = send_file(
-        io.BytesIO(result_bytes),
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        as_attachment=True,
-        download_name=out_filename,
-    )
-    response.headers['X-C8minus']    = str(report['c8minus'])
-    response.headers['X-C816total']  = str(report['c816_total'])
-    response.headers['X-C16plus']    = str(report['c16plus'])
-    response.headers['X-GrandTotal'] = str(report['grand_total'])
-    response.headers['X-Passed']     = str(report['passed'])
-    response.headers['X-AutoClass']  = str(report['auto_classified'])
-    s816 = report['sums_816']
-    response.headers['X-Aromatic']     = str(round(s816.get('Aromatic',     0.0), 2))
-    response.headers['X-Polyaromatic'] = str(round(s816.get('Polyaromatic', 0.0), 2))
-    response.headers['X-Nalkane']      = str(round(s816.get('n-alkane',     0.0), 2))
-    response.headers['X-Isoalkane']    = str(round(s816.get('iso-alkane',   0.0), 2))
-    response.headers['X-Cyclic']       = str(round(s816.get('cyclic',       0.0), 2))
-    response.headers['X-Alkene']       = str(round(s816.get('Alkene',       0.0), 2))
-    response.headers['X-Others']       = str(round(s816.get('others',       0.0), 2))
-    n_val   = s816.get('n-alkane',   0.0)
-    iso_val = s816.get('iso-alkane', 0.0)
-    response.headers['X-InRatio'] = str(round(iso_val / n_val, 2) if n_val > 0 else 0.0)
-    return response
-
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
