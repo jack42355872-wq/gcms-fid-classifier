@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GC-MS FID 成分分類工具 / GC-MS FID Classifier</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    /* ── Language switcher ── */
+    .lang-bar {
+      position: fixed;
+      top: 16px; right: 20px;
+      display: flex;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      overflow: hidden;
+      z-index: 100;
+    }
+    .lang-btn {
+      padding: 6px 16px;
+      border: none;
+      background: transparent;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #718096;
+      transition: all 0.2s;
+    }
+    .lang-btn.active {
+      background: #3182ce;
+      color: white;
+      border-radius: 20px;
+    }
+
+    h1 { font-size: 1.8rem; color: #1a365d; margin-bottom: 8px; }
+    .subtitle { color: #718096; margin-bottom: 40px; font-size: 0.95rem; }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 40px;
+      width: 100%;
+      max-width: 640px;
+    }
+
+    /* Drop zone */
+    #drop-zone {
+      border: 2px dashed #a0aec0;
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #f7fafc;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: #4299e1;
+      background: #ebf8ff;
+    }
+    #drop-zone .icon { font-size: 3rem; margin-bottom: 12px; }
+    #drop-zone p { color: #718096; font-size: 0.95rem; }
+    #drop-zone strong { color: #2d3748; }
+    #file-input { display: none; }
+
+    #file-info {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #ebf8ff;
+      border-radius: 8px;
+      color: #2b6cb0;
+      font-size: 0.9rem;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #process-btn {
+      display: none;
+      width: 100%;
+      margin-top: 20px;
+      padding: 14px;
+      background: #3182ce;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #process-btn:hover { background: #2b6cb0; }
+    #process-btn:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    #progress {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+      color: #718096;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #3182ce;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Report */
+    #report { display: none; margin-top: 28px; }
+    #report h2 {
+      font-size: 1.1rem; color: #2d3748;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 8px;
+    }
+    .report-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .report-item {
+      background: #f7fafc; border-radius: 8px;
+      padding: 12px; text-align: center;
+    }
+    .report-item .label { font-size: 0.78rem; color: #718096; margin-bottom: 4px; }
+    .report-item .value { font-size: 1.2rem; font-weight: 700; color: #2d3748; }
+    .report-item.highlight { background: #ebf8ff; }
+    .report-item.highlight .value { color: #2b6cb0; }
+
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .cat-item { border-radius: 6px; padding: 8px; text-align: center; font-size: 0.8rem; }
+    .cat-item .cat-label { font-size: 0.7rem; opacity: 0.8; }
+    .cat-item .cat-val { font-weight: 700; font-size: 1rem; }
+
+    .validation { padding: 10px 16px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; }
+    .validation.pass { background: #c6f6d5; color: #276749; }
+    .validation.fail { background: #fed7d7; color: #9b2c2c; }
+
+    #download-btn {
+      display: none;
+      width: 100%;
+      margin-top: 20px;
+      padding: 14px;
+      background: #38a169;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #download-btn:hover { background: #2f855a; }
+
+    #error-box {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #fed7d7;
+      border-radius: 8px;
+      color: #c53030;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Language switcher -->
+  <div class="lang-bar">
+    <button class="lang-btn active" onclick="setLang('zh')">中文</button>
+    <button class="lang-btn" onclick="setLang('en')">EN</button>
+  </div>
+
+  <h1 data-zh="🔬 GC-MS FID 成分分類工具" data-en="🔬 GC-MS FID Classifier">🔬 GC-MS FID 成分分類工具</h1>
+  <p class="subtitle"
+     data-zh="上傳 Shimadzu GC-MS 輸出的 xlsx，自動分類並加總 C8-16 成分"
+     data-en="Upload a Shimadzu GC-MS xlsx — auto-classify and summarize C8-16 components">
+    上傳 Shimadzu GC-MS 輸出的 xlsx，自動分類並加總 C8-16 成分
+  </p>
+
+  <div class="card">
+    <!-- Upload zone -->
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="icon">📂</div>
+      <p>
+        <strong data-zh="點擊選擇檔案" data-en="Click to select file">點擊選擇檔案</strong>
+        <span data-zh="或拖曳到這裡" data-en=" or drag & drop here">或拖曳到這裡</span>
+      </p>
+      <p style="margin-top:6px;"
+         data-zh="僅接受 .xlsx 格式"
+         data-en="Only .xlsx files accepted">僅接受 .xlsx 格式</p>
+    </div>
+    <input type="file" id="file-input" accept=".xlsx">
+
+    <div id="file-info"></div>
+
+    <button id="process-btn"
+            data-zh="開始分類"
+            data-en="Start Classification"
+            onclick="processFile()">開始分類</button>
+
+    <div id="progress">
+      <div class="spinner"></div>
+      <p data-zh="處理中，請稍候…" data-en="Processing, please wait…">處理中，請稍候…</p>
+    </div>
+
+    <div id="error-box"></div>
+
+    <!-- Report -->
+    <div id="report">
+      <h2 data-zh="📊 驗證報告" data-en="📊 Validation Report">📊 驗證報告</h2>
+      <div class="report-grid">
+        <div class="report-item">
+          <div class="label">C8-</div>
+          <div class="value" id="r-c8m">—</div>
+        </div>
+        <div class="report-item highlight">
+          <div class="label" data-zh="C8-16 總計" data-en="C8-16 Total">C8-16 總計</div>
+          <div class="value" id="r-c816">—</div>
+        </div>
+        <div class="report-item">
+          <div class="label">C16+</div>
+          <div class="value" id="r-c16p">—</div>
+        </div>
+      </div>
+
+      <div class="category-grid">
+        <div class="cat-item" style="background:#92D050;color:#1a3a0a;">
+          <div class="cat-label">Aromatic</div>
+          <div class="cat-val" id="r-aro">—</div>
+        </div>
+        <div class="cat-item" style="background:#C5B0D5;color:#2d1a4a;">
+          <div class="cat-label">Polyaromatic</div>
+          <div class="cat-val" id="r-poly">—</div>
+        </div>
+        <div class="cat-item" style="background:#FF8C00;color:#fff;">
+          <div class="cat-label">n-alkane</div>
+          <div class="cat-val" id="r-nalk">—</div>
+        </div>
+        <div class="cat-item" style="background:#FF6600;color:#fff;">
+          <div class="cat-label">iso-alkane</div>
+          <div class="cat-val" id="r-iso">—</div>
+        </div>
+        <div class="cat-item" style="background:#FFD700;color:#3a2a00;">
+          <div class="cat-label">cyclic</div>
+          <div class="cat-val" id="r-cyc">—</div>
+        </div>
+        <div class="cat-item" style="background:#ADD8E6;color:#0a2a3a;">
+          <div class="cat-label">Alkene</div>
+          <div class="cat-val" id="r-alk">—</div>
+        </div>
+        <div class="cat-item" style="background:#FA8072;color:#3a0a0a;">
+          <div class="cat-label">others</div>
+          <div class="cat-val" id="r-oth">—</div>
+        </div>
+        <div class="cat-item" style="background:#e2e8f0;color:#2d3748;">
+          <div class="cat-label">i/n ratio</div>
+          <div class="cat-val" id="r-in">—</div>
+        </div>
+      </div>
+
+      <div id="validation-box" class="validation">—</div>
+    </div>
+
+    <button id="download-btn"
+            data-zh="⬇️ 下載分類完成的 xlsx（含驗證報告）"
+            data-en="⬇️ Download classified xlsx (with validation report)">
+      ⬇️ 下載分類完成的 xlsx（含驗證報告）
+    </button>
+  </div>
+
+  <script>
+    let selectedFile = null;
+    let resultBlob   = null;
+    let resultName   = '';
+    let currentLang  = 'zh';
+
+    // ── i18n ─────────────────────────────────────────────────────────
+    const i18n = {
+      zh: {
+        fileSelected: (name, size) => `📄 <span><strong>${name}</strong> (${size} KB)</span>`,
+        validationPass: (err, auto) => `✅ 加總驗證通過（誤差 ${err}）｜自動補分類 ${auto} 個峰`,
+        validationFail: (err) => `❌ 加總有差異（誤差 ${err}），請手動確認`,
+        errorNoFile: '沒有收到檔案',
+        errorFormat: '只接受 .xlsx 檔案',
+        errorServer: '伺服器錯誤',
+      },
+      en: {
+        fileSelected: (name, size) => `📄 <span><strong>${name}</strong> (${size} KB)</span>`,
+        validationPass: (err, auto) => `✅ Validation passed (error ${err}) | Auto-classified ${auto} peaks`,
+        validationFail: (err) => `❌ Sum mismatch (error ${err}), please check manually`,
+        errorNoFile: 'No file received',
+        errorFormat: 'Only .xlsx files are accepted',
+        errorServer: 'Server error',
+      }
+    };
+
+    function setLang(lang) {
+      currentLang = lang;
+      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector(`.lang-btn[onclick="setLang('${lang}')"]`).classList.add('active');
+
+      // 更新所有有 data-zh / data-en 的元素
+      document.querySelectorAll('[data-zh]').forEach(el => {
+        const val = el.getAttribute('data-' + lang);
+        if (val) {
+          // button 用 textContent，其他用 innerHTML 或 textContent
+          if (el.tagName === 'BUTTON') el.textContent = val;
+          else el.textContent = val;
+        }
+      });
+
+      // html lang
+      document.documentElement.lang = lang === 'zh' ? 'zh-TW' : 'en';
+    }
+
+    // ── Drag & Drop ──────────────────────────────────────────────────
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) setFile(file);
+    });
+    document.getElementById('file-input').addEventListener('change', e => {
+      if (e.target.files[0]) setFile(e.target.files[0]);
+    });
+
+    function setFile(file) {
+      if (!file.name.endsWith('.xlsx')) {
+        showError(i18n[currentLang].errorFormat);
+        return;
+      }
+      selectedFile = file;
+      const info = document.getElementById('file-info');
+      info.style.display = 'flex';
+      info.innerHTML = i18n[currentLang].fileSelected(file.name, (file.size/1024).toFixed(1));
+      document.getElementById('process-btn').style.display = 'block';
+      document.getElementById('report').style.display      = 'none';
+      document.getElementById('download-btn').style.display = 'none';
+      document.getElementById('error-box').style.display   = 'none';
+    }
+
+    // ── Process ──────────────────────────────────────────────────────
+    async function processFile() {
+      if (!selectedFile) return;
+
+      document.getElementById('process-btn').disabled       = true;
+      document.getElementById('progress').style.display     = 'block';
+      document.getElementById('report').style.display       = 'none';
+      document.getElementById('error-box').style.display    = 'none';
+      document.getElementById('download-btn').style.display = 'none';
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      try {
+        const res = await fetch('/process', { method: 'POST', body: formData });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(
