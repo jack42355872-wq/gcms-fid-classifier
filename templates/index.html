@@ -15,8 +15,6 @@
       align-items: center;
       padding: 40px 20px;
     }
-
-    /* ── Language switcher ── */
     .lang-bar {
       position: fixed;
       top: 16px; right: 20px;
@@ -42,10 +40,8 @@
       color: white;
       border-radius: 20px;
     }
-
     h1 { font-size: 1.8rem; color: #1a365d; margin-bottom: 8px; }
     .subtitle { color: #718096; margin-bottom: 40px; font-size: 0.95rem; }
-
     .card {
       background: white;
       border-radius: 16px;
@@ -54,8 +50,6 @@
       width: 100%;
       max-width: 640px;
     }
-
-    /* Drop zone */
     #drop-zone {
       border: 2px dashed #a0aec0;
       border-radius: 12px;
@@ -73,7 +67,6 @@
     #drop-zone p { color: #718096; font-size: 0.95rem; }
     #drop-zone strong { color: #2d3748; }
     #file-input { display: none; }
-
     #file-info {
       display: none;
       margin-top: 16px;
@@ -85,7 +78,6 @@
       align-items: center;
       gap: 8px;
     }
-
     #process-btn {
       display: none;
       width: 100%;
@@ -102,7 +94,6 @@
     }
     #process-btn:hover { background: #2b6cb0; }
     #process-btn:disabled { background: #a0aec0; cursor: not-allowed; }
-
     #progress {
       display: none;
       margin-top: 20px;
@@ -118,8 +109,6 @@
       margin: 0 auto 12px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Report */
     #report { display: none; margin-top: 28px; }
     #report h2 {
       font-size: 1.1rem; color: #2d3748;
@@ -141,7 +130,6 @@
     .report-item .value { font-size: 1.2rem; font-weight: 700; color: #2d3748; }
     .report-item.highlight { background: #ebf8ff; }
     .report-item.highlight .value { color: #2b6cb0; }
-
     .category-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -151,11 +139,9 @@
     .cat-item { border-radius: 6px; padding: 8px; text-align: center; font-size: 0.8rem; }
     .cat-item .cat-label { font-size: 0.7rem; opacity: 0.8; }
     .cat-item .cat-val { font-weight: 700; font-size: 1rem; }
-
     .validation { padding: 10px 16px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; }
     .validation.pass { background: #c6f6d5; color: #276749; }
     .validation.fail { background: #fed7d7; color: #9b2c2c; }
-
     #download-btn {
       display: none;
       width: 100%;
@@ -171,7 +157,6 @@
       transition: background 0.2s;
     }
     #download-btn:hover { background: #2f855a; }
-
     #error-box {
       display: none;
       margin-top: 16px;
@@ -185,7 +170,6 @@
 </head>
 <body>
 
-  <!-- Language switcher -->
   <div class="lang-bar">
     <button class="lang-btn active" onclick="setLang('zh')">中文</button>
     <button class="lang-btn" onclick="setLang('en')">EN</button>
@@ -199,12 +183,11 @@
   </p>
 
   <div class="card">
-    <!-- Upload zone -->
-    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <div id="drop-zone">
       <div class="icon">📂</div>
       <p>
         <strong data-zh="點擊選擇檔案" data-en="Click to select file">點擊選擇檔案</strong>
-        <span data-zh="或拖曳到這裡" data-en=" or drag & drop here">或拖曳到這裡</span>
+        <span data-zh="或拖曳到這裡" data-en=" or drag &amp; drop here">或拖曳到這裡</span>
       </p>
       <p style="margin-top:6px;"
          data-zh="僅接受 .xlsx 格式"
@@ -226,7 +209,6 @@
 
     <div id="error-box"></div>
 
-    <!-- Report -->
     <div id="report">
       <h2 data-zh="📊 驗證報告" data-en="📊 Validation Report">📊 驗證報告</h2>
       <div class="report-grid">
@@ -290,25 +272,24 @@
   </div>
 
   <script>
-    let selectedFile = null;
-    let resultBlob   = null;
-    let resultName   = '';
-    let currentLang  = 'zh';
+    var selectedFile = null;
+    var resultBlob   = null;
+    var resultName   = '';
+    var currentLang  = 'zh';
 
-    // ── i18n ─────────────────────────────────────────────────────────
-    const i18n = {
+    var i18n = {
       zh: {
-        fileSelected: (name, size) => `📄 <span><strong>${name}</strong> (${size} KB)</span>`,
-        validationPass: (err, auto) => `✅ 加總驗證通過（誤差 ${err}）｜自動補分類 ${auto} 個峰`,
-        validationFail: (err) => `❌ 加總有差異（誤差 ${err}），請手動確認`,
+        fileSelected: function(name, size) { return '📄 <span><strong>' + name + '</strong> (' + size + ' KB)</span>'; },
+        validationPass: function(err, auto) { return '✅ 加總驗證通過（誤差 ' + err + '）｜自動補分類 ' + auto + ' 個峰'; },
+        validationFail: function(err) { return '❌ 加總有差異（誤差 ' + err + '），請手動確認'; },
         errorNoFile: '沒有收到檔案',
         errorFormat: '只接受 .xlsx 檔案',
         errorServer: '伺服器錯誤',
       },
       en: {
-        fileSelected: (name, size) => `📄 <span><strong>${name}</strong> (${size} KB)</span>`,
-        validationPass: (err, auto) => `✅ Validation passed (error ${err}) | Auto-classified ${auto} peaks`,
-        validationFail: (err) => `❌ Sum mismatch (error ${err}), please check manually`,
+        fileSelected: function(name, size) { return '📄 <span><strong>' + name + '</strong> (' + size + ' KB)</span>'; },
+        validationPass: function(err, auto) { return '✅ Validation passed (error ' + err + ') | Auto-classified ' + auto + ' peaks'; },
+        validationFail: function(err) { return '❌ Sum mismatch (error ' + err + '), please check manually'; },
         errorNoFile: 'No file received',
         errorFormat: 'Only .xlsx files are accepted',
         errorServer: 'Server error',
@@ -317,54 +298,70 @@
 
     function setLang(lang) {
       currentLang = lang;
-      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-      document.querySelector(`.lang-btn[onclick="setLang('${lang}')"]`).classList.add('active');
-
-      // 更新所有有 data-zh / data-en 的元素
-      document.querySelectorAll('[data-zh]').forEach(el => {
-        const val = el.getAttribute('data-' + lang);
-        if (val) {
-          // button 用 textContent，其他用 innerHTML 或 textContent
-          if (el.tagName === 'BUTTON') el.textContent = val;
-          else el.textContent = val;
-        }
+      document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelector('.lang-btn[onclick="setLang(\'' + lang + '\')"]').classList.add('active');
+      document.querySelectorAll('[data-zh]').forEach(function(el) {
+        var val = el.getAttribute('data-' + lang);
+        if (val) el.textContent = val;
       });
-
-      // html lang
       document.documentElement.lang = lang === 'zh' ? 'zh-TW' : 'en';
     }
 
-    // ── Drag & Drop ──────────────────────────────────────────────────
-    const dropZone = document.getElementById('drop-zone');
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-    dropZone.addEventListener('drop', e => {
-      e.preventDefault();
-      dropZone.classList.remove('drag-over');
-      const file = e.dataTransfer.files[0];
-      if (file) setFile(file);
-    });
-    document.getElementById('file-input').addEventListener('change', e => {
-      if (e.target.files[0]) setFile(e.target.files[0]);
+    function showError(msg) {
+      var box = document.getElementById('error-box');
+      box.textContent = msg;
+      box.style.display = 'block';
+    }
+
+    // Drop zone click
+    document.getElementById('drop-zone').addEventListener('click', function() {
+      document.getElementById('file-input').click();
     });
 
-    function setFile(file) {
-      if (!file.name.endsWith('.xlsx')) {
+    // Drag & Drop
+    var dropZone = document.getElementById('drop-zone');
+    dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('drag-over'); });
+    dropZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      var file = e.dataTransfer.files[0];
+      if (file) window.setFile(file);
+    });
+
+    // File input change – use polling fallback for robustness
+    var fileInput = document.getElementById('file-input');
+    fileInput.addEventListener('change', function(e) {
+      if (e.target.files[0]) window.setFile(e.target.files[0]);
+    });
+    // Polling fallback: detect file selected even without change event
+    fileInput.addEventListener('click', function() {
+      var before = fileInput.files.length;
+      var poll = setInterval(function() {
+        if (fileInput.files.length !== before || fileInput.files.length > 0) {
+          clearInterval(poll);
+          if (fileInput.files[0]) window.setFile(fileInput.files[0]);
+        }
+      }, 300);
+      setTimeout(function() { clearInterval(poll); }, 30000);
+    });
+
+    window.setFile = function(file) {
+      if (!file.name.toLowerCase().endsWith('.xlsx')) {
         showError(i18n[currentLang].errorFormat);
         return;
       }
       selectedFile = file;
-      const info = document.getElementById('file-info');
+      var info = document.getElementById('file-info');
       info.style.display = 'flex';
       info.innerHTML = i18n[currentLang].fileSelected(file.name, (file.size/1024).toFixed(1));
       document.getElementById('process-btn').style.display = 'block';
       document.getElementById('report').style.display      = 'none';
       document.getElementById('download-btn').style.display = 'none';
       document.getElementById('error-box').style.display   = 'none';
-    }
+    };
 
-    // ── Process ──────────────────────────────────────────────────────
-    async function processFile() {
+    window.processFile = function() {
       if (!selectedFile) return;
 
       document.getElementById('process-btn').disabled       = true;
@@ -373,12 +370,65 @@
       document.getElementById('error-box').style.display    = 'none';
       document.getElementById('download-btn').style.display = 'none';
 
-      const formData = new FormData();
+      var formData = new FormData();
       formData.append('file', selectedFile);
 
-      try {
-        const res = await fetch('/classify', { method: 'POST', body: formData });
+      fetch('/classify', { method: 'POST', body: formData })
+        .then(function(res) {
+          if (!res.ok) {
+            return res.json().then(function(err) { throw new Error(err.error || i18n[currentLang].errorServer); });
+          }
+          // Read headers
+          var c8m   = res.headers.get('X-C8minus')   || '—';
+          var c816  = res.headers.get('X-C816total')  || '—';
+          var c16p  = res.headers.get('X-C16plus')    || '—';
+          var grand = res.headers.get('X-GrandTotal') || '—';
+          var pass  = res.headers.get('X-Passed')     || 'False';
+          var auto  = res.headers.get('X-AutoClass')  || '0';
 
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(
+          document.getElementById('r-c8m').textContent  = c8m  + '%';
+          document.getElementById('r-c816').textContent = c816 + '%';
+          document.getElementById('r-c16p').textContent = c16p + '%';
+
+          var vbox = document.getElementById('validation-box');
+          var err  = Math.abs(parseFloat(grand) - 100).toFixed(4);
+          if (pass === 'True') {
+            vbox.textContent = i18n[currentLang].validationPass(err, auto);
+            vbox.className = 'validation pass';
+          } else {
+            vbox.textContent = i18n[currentLang].validationFail(err);
+            vbox.className = 'validation fail';
+          }
+
+          document.getElementById('report').style.display = 'block';
+          document.getElementById('progress').style.display = 'none';
+          document.getElementById('process-btn').disabled = false;
+          document.getElementById('download-btn').style.display = 'block';
+
+          return res.blob();
+        })
+        .then(function(blob) {
+          resultBlob = blob;
+          var stem = selectedFile.name.replace('.xlsx', '');
+          resultName = stem + '_分類.xlsx';
+        })
+        .catch(function(err) {
+          document.getElementById('progress').style.display = 'none';
+          document.getElementById('process-btn').disabled = false;
+          showError(err.message || i18n[currentLang].errorServer);
+        });
+    };
+
+    document.getElementById('download-btn').addEventListener('click', function() {
+      if (!resultBlob) return;
+      var url = URL.createObjectURL(resultBlob);
+      var a   = document.createElement('a');
+      a.href  = url;
+      a.download = resultName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
+    });
+  </script>
+</body>
+</html>
