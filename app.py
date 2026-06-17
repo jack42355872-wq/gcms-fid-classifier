@@ -346,9 +346,6 @@ def classify():
     response.headers['X-GrandTotal'] = str(report['grand_total'])
     response.headers['X-Passed']     = str(report['passed'])
     response.headers['X-AutoClass']  = str(report['auto_classified'])
-    return response
-
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    s816 = report['sums_816']
+    response.headers['X-Aromatic']     = str(round(s816.get('Aromatic',     0.0), 2))
+    response.head

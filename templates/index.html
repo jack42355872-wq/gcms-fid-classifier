@@ -385,10 +385,34 @@
           var grand = res.headers.get('X-GrandTotal') || '—';
           var pass  = res.headers.get('X-Passed')     || 'False';
           var auto  = res.headers.get('X-AutoClass')  || '0';
+          var aro   = res.headers.get('X-Aromatic')     || '—';
+          var poly  = res.headers.get('X-Polyaromatic') || '—';
+          var nalk  = res.headers.get('X-Nalkane')      || '—';
+          var iso   = res.headers.get('X-Isoalkane')    || '—';
+          var cyc   = res.headers.get('X-Cyclic')       || '—';
+          var alk   = res.headers.get('X-Alkene')       || '—';
+          var oth   = res.headers.get('X-Others')       || '—';
+          var inr   = res.headers.get('X-InRatio')      || '—';
 
           document.getElementById('r-c8m').textContent  = c8m  + '%';
           document.getElementById('r-c816').textContent = c816 + '%';
           document.getElementById('r-c16p').textContent = c16p + '%';
+          document.getElementById('r-aro').textContent  = aro  !== '—' ? aro  + '%' : '—';
+          document.getElementById('r-poly').textContent = poly !== '—' ? poly + '%' : '—';
+          document.getElementById('r-nalk').textContent = nalk !== '—' ? nalk + '%' : '—';
+          document.getElementById('r-iso').textContent  = iso  !== '—' ? iso  + '%' : '—';
+          document.getElementById('r-cyc').textContent  = cyc  !== '—' ? cyc  + '%' : '—';
+          document.getElementById('r-alk').textContent  = alk  !== '—' ? alk  + '%' : '—';
+          document.getElementById('r-oth').textContent  = oth  !== '—' ? oth  + '%' : '—';
+          document.getElementById('r-in').textContent   = inr;
+          document.getElementById('r-aro').textContent  = aro  !== '—' ? aro  + '%' : '—';
+          document.getElementById('r-poly').textContent = poly !== '—' ? poly + '%' : '—';
+          document.getElementById('r-nalk').textContent = nalk !== '—' ? nalk + '%' : '—';
+          document.getElementById('r-iso').textContent  = iso  !== '—' ? iso  + '%' : '—';
+          document.getElementById('r-cyc').textContent  = cyc  !== '—' ? cyc  + '%' : '—';
+          document.getElementById('r-alk').textContent  = alk  !== '—' ? alk  + '%' : '—';
+          document.getElementById('r-oth').textContent  = oth  !== '—' ? oth  + '%' : '—';
+          document.getElementById('r-in').textContent   = inr;
 
           var vbox = document.getElementById('validation-box');
           var err  = Math.abs(parseFloat(grand) - 100).toFixed(4);
