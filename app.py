@@ -348,4 +348,18 @@ def classify():
     response.headers['X-AutoClass']  = str(report['auto_classified'])
     s816 = report['sums_816']
     response.headers['X-Aromatic']     = str(round(s816.get('Aromatic',     0.0), 2))
-    response.head
+    response.headers['X-Polyaromatic'] = str(round(s816.get('Polyaromatic', 0.0), 2))
+    response.headers['X-Nalkane']      = str(round(s816.get('n-alkane',     0.0), 2))
+    response.headers['X-Isoalkane']    = str(round(s816.get('iso-alkane',   0.0), 2))
+    response.headers['X-Cyclic']       = str(round(s816.get('cyclic',       0.0), 2))
+    response.headers['X-Alkene']       = str(round(s816.get('Alkene',       0.0), 2))
+    response.headers['X-Others']       = str(round(s816.get('others',       0.0), 2))
+    n_val   = s816.get('n-alkane',   0.0)
+    iso_val = s816.get('iso-alkane', 0.0)
+    response.headers['X-InRatio'] = str(round(iso_val / n_val, 2) if n_val > 0 else 0.0)
+    return response
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
