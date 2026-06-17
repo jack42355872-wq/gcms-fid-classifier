@@ -297,11 +297,12 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
         chart.series[0].dPt.append(pt)
 
     # 圖表放在 Summary 下方
-    chart_anchor = f'A{SUMMARY_VALUES_ROW + 2}'
+    # 圖表放在 Summary 右側，不佔 A 欄（避免跟 Peak Table 重疊）
+    chart_anchor = f'N{summary_header_row}'
     ws.add_chart(chart, chart_anchor)
 
-    # Step 10: 驗證報告（寫在圖表下方，約 20 列後）
-    report_start_row = SUMMARY_VALUES_ROW + 22
+    # Step 10: 驗證報告（寫在 Peak Table 最後一列之後，絕對不跟 data 重疊）
+    report_start_row = DATA_START_ROW + len(data) + 2
 
     title_cell = ws.cell(row=report_start_row, column=1)
     title_cell.value = 'Validation Report'
@@ -334,5 +335,4 @@ def process_gcms_file(file_bytes: bytes, original_filename: str) -> tuple[bytes,
         ws.cell(row=r, column=2).font  = Font(bold=True, size=10)
         if label == 'PASS / FAIL':
             color = 'C6EFCE' if passed else 'FFC7CE'
-            ws.cell(row=r, column=2).fill = PatternFill(
-                start_color=color, end_color=color, fill_type='solid')
+            ws
