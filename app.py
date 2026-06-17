@@ -238,14 +238,19 @@ def process_gcms_file(file_bytes: bytes, original_filename: str):
         ws.cell(row=summary_header_row+1+i, column=chart_data_col).value   = lbl
         ws.cell(row=summary_header_row+1+i, column=chart_data_col+1).value = val
 
+    from openpyxl.chart.label import DataLabel, DataLabelList
+    from openpyxl.chart.layout import Layout
+
     chart = BarChart()
-    chart.type      = 'col'
-    chart.grouping  = 'clustered'
-    chart.title     = 'C8-16 Category Distribution (%)'
-    chart.y_axis.title = 'Conc. %'
-    chart.x_axis.title = 'Category'
-    chart.width     = 18
-    chart.height    = 12
+    chart.type       = 'col'
+    chart.grouping   = 'clustered'
+    chart.title      = 'C8-16 Category Distribution (%)'
+    chart.y_axis.title  = 'Conc. %'
+    chart.x_axis.title  = 'Category'
+    chart.width      = 22
+    chart.height     = 14
+    chart.y_axis.numFmt = '0.00'
+    chart.y_axis.majorGridlines = None
 
     data_ref = Reference(ws,
                          min_col=chart_data_col+1,
@@ -263,6 +268,13 @@ def process_gcms_file(file_bytes: bytes, original_filename: str):
         pt = DataPoint(idx=idx)
         pt.graphicalProperties.solidFill = color
         chart.series[0].dPt.append(pt)
+
+    # 加 data labels（顯示數值在 bar 上方）
+    chart.series[0].dLbls = DataLabelList()
+    chart.series[0].dLbls.showVal   = True
+    chart.series[0].dLbls.showLegendKey = False
+    chart.series[0].dLbls.showCatName   = False
+    chart.series[0].dLbls.numFmt        = '0.00'
 
     ws.add_chart(chart, f'N{summary_header_row}')
 
