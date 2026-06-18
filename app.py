@@ -397,3 +397,14 @@ def classify():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
+
+@app.route('/test-pubchem')
+def test_pubchem():
+    import urllib.request, json as _json
+    url = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/CYCLOHEXANE/property/MolecularFormula,IUPACName/JSON'
+    try:
+        with urllib.request.urlopen(url, timeout=8) as r:
+            return jsonify(_json.loads(r.read()))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
