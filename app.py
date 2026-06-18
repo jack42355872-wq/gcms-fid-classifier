@@ -30,6 +30,86 @@ RT_C8_MINUS_MAX = 2.178
 RT_C816_MAX     = 17.6
 
 
+
+# ── PubChem Hybrid 查詢（僅對 others 觸發）────────────────────────────
+_pubchem_cache: dict = {}   # in-memory cache，每次重啟清空
+
+def _pubchem_lookup(name: str) -> str:
+    """
+    查 PubChem PUG REST API 取得分子式，依分子式二次分類。
+    失敗時靜默回傳 'others'。
+    """
+    import urllib.request, urllib.parse, json as _json
+
+    key = name.upper().strip()
+    if key in _pubchem_cache:
+        return _pubchem_cache[key]
+
+    try:
+        encoded = urllib.parse.quote(key)
+        url = (f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/'
+               f'{encoded}/property/MolecularFormula,IUPACName/JSON')
+        with urllib.request.urlopen(url, timeout=5) as r:
+            data = _json.loads(r.read())
+        props = data['PropertyTable']['Properties'][0]
+        formula = props.get('MolecularFormula', '')
+        iupac   = props.get('IUPACName', '').upper()
+        result  = _classify_by_formula(formula, iupac, key)
+    except Exception:
+        result = 'others'
+
+    _pubchem_cache[key] = result
+    return result
+
+
+def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
+    """
+    依分子式 CₙHₘ 推斷化合物類別。
+    規則：
+      - 含苯環特徵（H 數明顯不飽和且 IUPAC 含 benzene/phenyl/naphthalene）→ Aromatic/Polyaromatic
+      - CₙH₂ₙ₋₆ (苯環) 或 IUPAC 含 benzene → Aromatic
+      - IUPAC 含 naphthalene/pyrene/fluorene/anthracene → Polyaromatic
+      - CₙH₂ₙ₊₂ 且含 cyclo → cyclic  (實際上 cycloalkane = CₙH₂ₙ，見下)
+      - CₙH₂ₙ    → cyclic（若 iupac 含 cycl）或 Alkene
+      - CₙH₂ₙ₊₂  → alkane；有 methyl branch → iso-alkane，否則 → n-alkane
+    """
+    import re
+    m = re.match(r'^C(\d+)H(\d+)(?:O\d*)?(?:N\d*)?$', formula)
+    if not m:
+        return 'others'
+
+    c = int(m.group(1))
+    h = int(m.group(2))
+
+    # 多環芳烴
+    if any(x in iupac for x in ['NAPHTHALENE','PYRENE','FLUORENE',
+                                  'ANTHRACENE','PHENANTHRENE','BIPHENYL']):
+        return 'Polyaromatic'
+
+    # 單環芳烴（苯環 CₙH₂ₙ₋₆）
+    if h == 2 * c - 6 or any(x in iupac for x in ['BENZENE','TOLUENE',
+                                                     'XYLENE','PHENYL',
+                                                     'STYRENE','CUMENE']):
+        return 'Aromatic'
+
+    # Cycloalkane CₙH₂ₙ + cycl in name
+    if h == 2 * c and 'CYCL' in iupac:
+        return 'cyclic'
+
+    # Alkene CₙH₂ₙ（不含 cyclo）
+    if h == 2 * c:
+        return 'Alkene'
+
+    # Alkane CₙH₂ₙ₊₂
+    if h == 2 * c + 2:
+        if 'METHYL' in iupac or 'ETHYL' in iupac:
+            # 直鏈 ethyl ≠ iso，再確認是否 branched
+            if re.search(r'\d+-methyl|\d+-ethyl|\d+-propyl', iupac):
+                return 'iso-alkane'
+        return 'n-alkane'
+
+    return 'others'
+
 def auto_classify(name: str) -> str:
     n = name.upper().strip()
     if any(x in n for x in ['NAPHTHALENE','ANTHRACENE','PHENANTHRENE',
@@ -57,6 +137,14 @@ def auto_classify(name: str) -> str:
         if 'ANE' in n:
             return 'iso-alkane'
     return 'others'
+
+
+def _pubchem_fallback(name: str) -> str:
+    """先 auto_classify，若結果是 others 才查 PubChem。"""
+    result = auto_classify(name)
+    if result == 'others':
+        result = _pubchem_lookup(name)
+    return result
 
 
 def process_gcms_file(file_bytes: bytes, original_filename: str):
@@ -87,7 +175,7 @@ def process_gcms_file(file_bytes: bytes, original_filename: str):
 
     # Step 3: 自動分類
     mask_empty = data['Category'].isin(['nan','','NaN']) | data['Category'].isna()
-    data.loc[mask_empty, 'Category'] = data.loc[mask_empty, 'Name'].apply(auto_classify)
+    data.loc[mask_empty, 'Category'] = data.loc[mask_empty, 'Name'].apply(_pubchem_fallback)
     auto_classified_count = int(mask_empty.sum())
 
     # Step 4: 計算統計（在操作 Excel 前完成）
@@ -398,13 +486,3 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 
-
-@app.route('/test-pubchem')
-def test_pubchem():
-    import urllib.request, json as _json
-    url = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/CYCLOHEXANE/property/MolecularFormula,IUPACName/JSON'
-    try:
-        with urllib.request.urlopen(url, timeout=8) as r:
-            return jsonify(_json.loads(r.read()))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
