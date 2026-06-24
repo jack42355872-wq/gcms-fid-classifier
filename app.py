@@ -149,7 +149,10 @@ def _pubchem_fallback(name: str) -> str:
 
 def process_gcms_file(file_bytes: bytes, original_filename: str):
     # Step 1: 動態定位 header row
-    df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name='Sheet1', header=None)
+    # 自動偵測工作表（相容 Sheet1 / 工作表1 等不同語言設定）
+    xl = pd.ExcelFile(io.BytesIO(file_bytes))
+    sheet_name = xl.sheet_names[0]
+    df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
     header_row_idx = None
     for i, row in df_raw.iterrows():
         vals = [str(v) for v in row.values]
@@ -201,7 +204,8 @@ def process_gcms_file(file_bytes: bytes, original_filename: str):
 
     # Step 5: 開啟 Excel
     wb = load_workbook(io.BytesIO(file_bytes))
-    ws = wb['Sheet1']
+    sheet_name_wb = wb.sheetnames[0]
+    ws = wb[sheet_name_wb]
 
     # 確認是否已有 Summary 表格
     summary_header_row = None
