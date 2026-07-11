@@ -74,16 +74,23 @@ def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
       - CₙH₂ₙ₊₂  → alkane；有 methyl branch → iso-alkane，否則 → n-alkane
     """
     import re
-    m = re.match(r'^C(\d+)H(\d+)(?:O\d*)?(?:N\d*)?$', formula)
+    m = re.match(r'^C(\d+)H(\d+)((?:O\d*)?(?:N\d*)?)$', formula)
     if not m:
         return 'others'
 
     c = int(m.group(1))
     h = int(m.group(2))
+    hetero = m.group(3)   # 含 O/N → 雜原子化合物（脂肪醇、醛、酮、酯、胺）
 
-    # 多環芳烴
+    # 部分氫化的萘/茚 = 單芳香環 → Aromatic（與 auto_classify 的環數慣例一致）
+    if (('NAPHTHALENE' in iupac and ('TETRAHYDRO' in iupac or 'DIHYDRO' in iupac))
+            or any(x in iupac for x in ['TETRALIN','INDANE','INDENE','INDACENE'])):
+        return 'Aromatic'
+
+    # 多環芳烴（≥2 個芳香環）
     if any(x in iupac for x in ['NAPHTHALENE','PYRENE','FLUORENE',
-                                  'ANTHRACENE','PHENANTHRENE','BIPHENYL']):
+                                  'ANTHRACENE','PHENANTHRENE','BIPHENYL',
+                                  'AZULENE','FLUORANTHENE','PERYLENE','CHRYSENE']):
         return 'Polyaromatic'
 
     # 單環芳烴（苯環 CₙH₂ₙ₋₆）
@@ -91,6 +98,11 @@ def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
                                                      'XYLENE','PHENYL',
                                                      'STYRENE','CUMENE']):
         return 'Aromatic'
+
+    # 帶 O/N 的非芳香化合物 → 氧化物 / 含雜原子，非純碳氫類 → others
+    # （修正：脂肪醇 CₙH₂ₙ₊₂O 會被誤判成 n-alkane，因為過去只看 C/H 忽略了 O）
+    if hetero:
+        return 'others'
 
     # Cycloalkane CₙH₂ₙ + cycl in name
     if h == 2 * c and 'CYCL' in iupac:
@@ -103,8 +115,8 @@ def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
     # Alkane CₙH₂ₙ₊₂
     if h == 2 * c + 2:
         if 'METHYL' in iupac or 'ETHYL' in iupac:
-            # 直鏈 ethyl ≠ iso，再確認是否 branched
-            if re.search(r'\d+-methyl|\d+-ethyl|\d+-propyl', iupac):
+            # 直鏈 ethyl ≠ iso，再確認是否 branched（iupac 已 .upper()，故正則需忽略大小寫）
+            if re.search(r'\d+-methyl|\d+-ethyl|\d+-propyl', iupac, re.IGNORECASE):
                 return 'iso-alkane'
         return 'n-alkane'
 
@@ -112,12 +124,27 @@ def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
 
 def auto_classify(name: str) -> str:
     n = name.upper().strip()
+
+    # ── 1. 部分氫化的萘/茚 = 只剩「一個」芳香環 → 單環 Aromatic ──────────
+    #    tetralin(四氫萘)、dihydronaphthalene、indane、indene、indacene。
+    #    採「芳香環數目」慣例:此類只有 1 個芳香環,不列 Polyaromatic(PAH 需 ≥2 芳香環)。
+    #    相容 CAS 倒裝 "NAPHTHALENE, 1,2,3,4-TETRAHYDRO-" 與正寫 "...TETRAHYDRONAPHTHALENE"。
+    if 'NAPHTHALENE' in n and ('DECAHYDRO' in n or 'DECALIN' in n):
+        return 'cyclic'                       # 全飽和 decalin → 環烷
+    if (('NAPHTHALENE' in n and ('TETRAHYDRO' in n or 'DIHYDRO' in n))
+            or 'TETRALIN' in n
+            or any(x in n for x in ['INDENE', 'INDAN', 'INDACENE'])):
+        return 'Aromatic'
+
+    # ── 2. 真正多環芳烴(≥2 個芳香環)→ Polyaromatic ────────────────────
     if any(x in n for x in ['NAPHTHALENE','ANTHRACENE','PHENANTHRENE',
                               'PYRENE','FLUORENE','BIPHENYL','ACENAPHTHY',
-                              'INDENE','TETRAHYDRONAPHTHALENE','TETRALIN']):
+                              'AZULENE','FLUORANTHENE','PERYLENE','CHRYSENE']):
         return 'Polyaromatic'
+
+    # ── 3. 單環芳烴(苯環)→ Aromatic ──────────────────────────────────
     if any(x in n for x in ['BENZENE','TOLUENE','XYLENE','STYRENE',
-                              'INDAN','PHENYL','CUMENE']):
+                              'PHENYL','CUMENE','CYMENE']):
         return 'Aromatic'
     if any(x in n for x in ['CYCLOPENTANE','CYCLOHEXANE','CYCLOPROPANE',
                               'CYCLOBUTANE','CYCLOHEPTANE','CYCLOOCTANE']):
