@@ -164,48 +164,112 @@ def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
 
     return 'others'
 
-def auto_classify(name: str) -> str:
+# IUPAC 碳數字根 C1–C50。原本的清單只到 OCTADECANE(C18)，導致 GC-MS 常見的
+# 長鏈化合物（HENEICOSANE C21、DOTRIACONTANE C32、TRITETRACONTANE C43…）
+# 全部落到 others、被迫去查 PubChem。字根 + 'ANE'/'ENE' 即可涵蓋烷與烯。
+_CHAIN_STEMS = [
+    'METH','ETH','PROP','BUT','PENT','HEX','HEPT','OCT','NON','DEC',
+    'UNDEC','DODEC','TRIDEC','TETRADEC','PENTADEC','HEXADEC','HEPTADEC',
+    'OCTADEC','NONADEC',
+    'ICOS','EICOS','HENICOS','HENEICOS','DOCOS','TRICOS','TETRACOS',
+    'PENTACOS','HEXACOS','HEPTACOS','OCTACOS','NONACOS',
+    'TRIACONT','HENTRIACONT','DOTRIACONT','TRITRIACONT','TETRATRIACONT',
+    'PENTATRIACONT','HEXATRIACONT','HEPTATRIACONT','OCTATRIACONT','NONATRIACONT',
+    'TETRACONT','HENTETRACONT','DOTETRACONT','TRITETRACONT','TETRATETRACONT',
+    'PENTATETRACONT','HEXATETRACONT','HEPTATETRACONT','OCTATETRACONT','NONATETRACONT',
+    'PENTACONT',
+]
+_ALKANE_NAMES = tuple(s + 'ANE' for s in _CHAIN_STEMS)
+_ALKENE_NAMES = tuple(s + 'ENE' for s in _CHAIN_STEMS)
+
+# 非碳氫官能基（含 O / N / Si / S）。在烴類分類體系中一律歸 others。
+# 注意：帶環的含氧物（phenanthrenol、anthracenyl-propanol…）在前面的芳香環判定
+# 就會先被攔下，不會走到這裡。
+_HETERO_TOKENS = (
+    'ACID', 'ESTER', 'ETHER', 'AMINE', 'AMINO', 'AMIDE', 'NITRIL', 'NITRO',
+    'SILANE', 'SILOXANE', 'SILOXY', 'THIO', 'SULFON', 'SULFID',
+    'FURAN', 'PYRAN', 'OXEPINE', 'OXIRANE', 'TRIAZIN', 'PYRIDIN', 'PYRROL',
+    'IMIDAZOL', 'THIOPHEN', 'ANOL', 'ANAL', 'ANONE', 'ANOATE', 'OATE',
+    'ALDEHYDE', 'KETONE', 'OXO', 'HYDROXY', 'METHOXY', 'ETHOXY', 'CARBOXY',
+)
+
+# 環狀多烯的不飽和字尾（bicyclo/tricyclo/spiro 系統常見）。
+# 不含字尾 E，才能同時吃到 "…-TRIENE" 與德文式寫法 "…-TRIEN,"。
+_POLYENE_TOKENS = ('DIEN', 'TRIEN', 'TETRAEN', 'PENTAEN', 'HEXAEN', 'HEPTAEN')
+
+
+def _classify_keyword(name: str):
+    """
+    規則式分類，回傳 (category, confident)。
+
+    confident=False 只代表「所有規則都沒對上、真的不知道」，這種才值得去查 PubChem。
+    像 furan / silane / 醇 / 酸 / 酯 這類含雜原子的化合物，others 本身就是正確答案
+    （烴類分類體系裡沒有對應類別），屬於 confident=True，不該浪費一次網路查詢。
+    """
+    import re
     n = name.upper().strip()
 
     # ── 1. 部分氫化的萘/茚 = 只剩「一個」芳香環 → 單環 Aromatic ──────────
     #    tetralin(四氫萘)、dihydronaphthalene、indane、indene、indacene。
     #    採「芳香環數目」慣例:此類只有 1 個芳香環,不列 Polyaromatic(PAH 需 ≥2 芳香環)。
     #    相容 CAS 倒裝 "NAPHTHALENE, 1,2,3,4-TETRAHYDRO-" 與正寫 "...TETRAHYDRONAPHTHALENE"。
-    if 'NAPHTHALENE' in n and ('DECAHYDRO' in n or 'DECALIN' in n):
-        return 'cyclic'                       # 全飽和 decalin → 環烷
-    if (('NAPHTHALENE' in n and ('TETRAHYDRO' in n or 'DIHYDRO' in n))
+    #    一律用「字根」比對(NAPHTHALEN 而非 NAPHTHALENE)，否則衍生物寫法
+    #    (NAPHTHALENYL、INDEN-1-ONE、PHENANTHRENOL…)會整批漏掉。
+    if 'NAPHTHALEN' in n and ('DECAHYDRO' in n or 'DECALIN' in n):
+        return 'cyclic', True                 # 全飽和 decalin → 環烷
+    if (('NAPHTHALEN' in n and ('TETRAHYDRO' in n or 'DIHYDRO' in n))
             or 'TETRALIN' in n
-            or any(x in n for x in ['INDENE', 'INDAN', 'INDACENE'])):
-        return 'Aromatic'
+            or any(x in n for x in ('INDEN', 'INDAN', 'INDACENE'))):
+        return 'Aromatic', True
 
     # ── 2. 真正多環芳烴(≥2 個芳香環)→ Polyaromatic ────────────────────
-    if any(x in n for x in ['NAPHTHALENE','ANTHRACENE','PHENANTHRENE',
-                              'PYRENE','FLUORENE','BIPHENYL','ACENAPHTHY',
-                              'AZULENE','FLUORANTHENE','PERYLENE','CHRYSENE']):
-        return 'Polyaromatic'
+    if any(x in n for x in ('NAPHTHALEN','ANTHRACEN','PHENANTHREN','PYREN',
+                              'FLUOREN','BIPHENYL','ACENAPHTH','AZULEN',
+                              'FLUORANTHEN','PERYLEN','CHRYSEN','DIBENZO')):
+        return 'Polyaromatic', True
 
     # ── 3. 單環芳烴(苯環)→ Aromatic ──────────────────────────────────
-    if any(x in n for x in ['BENZENE','TOLUENE','XYLENE','STYRENE',
-                              'PHENYL','CUMENE','CYMENE']):
-        return 'Aromatic'
-    if any(x in n for x in ['CYCLOPENTANE','CYCLOHEXANE','CYCLOPROPANE',
-                              'CYCLOBUTANE','CYCLOHEPTANE','CYCLOOCTANE']):
-        return 'cyclic'
-    if '-ENE' in n or any(x in n for x in ['PROPENE','BUTENE','PENTENE',
-                                             'HEXENE','HEPTENE','OCTENE',
-                                             'NONENE','DECENE']):
-        return 'Alkene'
-    straight = ['HEXANE','HEPTANE','OCTANE','NONANE','DECANE',
-                'UNDECANE','DODECANE','TRIDECANE','TETRADECANE',
-                'PENTADECANE','HEXADECANE','HEPTADECANE','OCTADECANE']
-    if any(x in n for x in straight):
-        if '2-METHYL' in n or '3-METHYL' in n:
-            return 'iso-alkane'
-        return 'n-alkane'
-    if any(x in n for x in ['ISOPENTANE','ISOBUTANE','2-METHYL','3-METHYL']):
+    #    ANNULENE = 大環芳香烴(Hückel 4n+2)；PHTHALATE / PHENOL / CRESOL / BENZYL 皆帶苯環。
+    if any(x in n for x in ('BENZENE','BENZO','BENZYL','TOLUEN','XYLEN','STYREN',
+                              'PHENYL','CUMENE','CYMENE','PHTHALATE','PHENOL',
+                              'CRESOL','ANNULENE')):
+        return 'Aromatic', True
+
+    # ── 4. 含雜原子官能基(醇/醛/酮/酸/酯/醚/胺/矽/含氧氮雜環)→ others ────
+    #    這些不是碳氫化合物，在烴類分類體系中沒有對應類別，others 就是正解，
+    #    不必再查 PubChem（標記 confident=True）。
+    if any(x in n for x in _HETERO_TOKENS) or n.endswith('OL'):
+        return 'others', True
+
+    # ── 5. 飽和環烷 → cyclic ─────────────────────────────────────────
+    if any(x in n for x in ('CYCLOPENTANE','CYCLOHEXANE','CYCLOPROPANE',
+                              'CYCLOBUTANE','CYCLOHEPTANE','CYCLOOCTANE')):
+        return 'cyclic', True
+    if 'DECAHYDRO' in n:
+        return 'cyclic', True
+
+    # ── 6. 烯類(含 bicyclo/tricyclo/spiro 的環狀多烯)→ Alkene ─────────
+    if ('-ENE' in n
+            or any(x in n for x in _POLYENE_TOKENS)
+            or any(x in n for x in _ALKENE_NAMES)):
+        return 'Alkene', True
+
+    # ── 7. 烷類 → n-alkane / iso-alkane ──────────────────────────────
+    if any(x in n for x in _ALKANE_NAMES):
+        if re.search(r'\d\s*-\s*(METHYL|ETHYL|PROPYL|BUTYL)', n) or 'ISO' in n:
+            return 'iso-alkane', True
+        return 'n-alkane', True
+    if any(x in n for x in ('ISOPENTANE','ISOBUTANE','2-METHYL','3-METHYL')):
         if 'ANE' in n:
-            return 'iso-alkane'
-    return 'others'
+            return 'iso-alkane', True
+
+    # 所有規則都沒對上 → 交給 PubChem 用分子式二次判定
+    return 'others', False
+
+
+def auto_classify(name: str) -> str:
+    """規則式分類的對外介面（只回傳類別）。"""
+    return _classify_keyword(name)[0]
 
 
 def _prefetch_pubchem(names, budget=None) -> None:
@@ -240,11 +304,11 @@ def _prefetch_pubchem(names, budget=None) -> None:
 
 def _pubchem_fallback(name: str, budget=None) -> str:
     """
-    先 auto_classify，若結果是 others 才查 PubChem。
-    已快取的名稱直接取用（不佔預算）；未快取且預算已用罄時，保持 'others' 不再發出網路查詢。
+    先跑規則式分類；只有「規則完全判不出來」(confident=False) 才查 PubChem。
+    已快取的名稱直接取用（不佔預算）；未快取且預算已用罄時，保持 'others'。
     """
-    result = auto_classify(name)
-    if result != 'others':
+    result, confident = _classify_keyword(name)
+    if confident:
         return result
 
     key = name.upper().strip()
@@ -344,7 +408,7 @@ def _process_single_sheet(df_raw, header_row_idx, ws, budget=None):
 
     # 先用關鍵字規則篩一輪，把判不出來的名稱集中起來並行查 PubChem，
     # 避免在下面的 apply 裡一個一個等網路（那正是 Render 逾時的原因）。
-    unresolved = [nm for nm in pending.unique() if auto_classify(str(nm)) == 'others']
+    unresolved = [nm for nm in pending.unique() if not _classify_keyword(str(nm))[1]]
     _prefetch_pubchem(unresolved, budget)
 
     data.loc[mask_empty, 'Category'] = pending.apply(
