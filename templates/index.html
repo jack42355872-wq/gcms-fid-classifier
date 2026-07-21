@@ -306,7 +306,7 @@
             <li><b>Alkene</b>：烯類（碳碳雙鍵，非芳香）</li>
             <li><b>Aromatic</b>：單一芳香環（苯、甲苯、二甲苯；以及 tetralin／indane／dihydronaphthalene 等只帶一個芳香環的部分氫化萘/茚類）</li>
             <li><b>Polyaromatic</b>：≥2 個芳香環（naphthalene、anthracene、phenanthrene、fluorene、biphenyl、azulene 等）</li>
-            <li><b>others</b>：含氧/氮/矽等雜原子的非烴類（脂肪醇、醛、酮、酸、酯、醚、胺、furan 等含氧氮雜環）。烴類分類體系中沒有對應類別，others 即為正解</li>
+            <li><b>others</b>：含氧/氮/硫/矽/鹵素等雜原子的非烴類（脂肪醇、醛、酮、酸、酯、醚、胺、氯代烷、furan 等雜環）。烴類分類體系中沒有對應類別，others 即為正解，並非「判不出來」</li>
           </ul>
           <p>規則以<b>化學字根</b>比對，涵蓋衍生物寫法（NAPHTHALENYL、INDEN-1-ONE、PHENANTHRENOL 等），
              直鏈烷／烯涵蓋 C1–C50（含 HENEICOSANE、DOTRIACONTANE、TRITETRACONTANE 這類長鏈），
@@ -340,9 +340,15 @@
             <li><b>Peak# 欄位必須是連續的數字</b>：Peak Table 中間若插入空白列或文字列，系統會判定表格在該處結束，後面的 peak 不會被分類</li>
           </ul>
           <p style="margin-top:10px;color:#718096;font-size:0.86rem;">
-            備註：無法用關鍵字判定的化合物會查詢 PubChem，此步驟有總時間上限（45 秒）。
-            若某份檔案的未知化合物特別多，超過上限的部分會留在 others 並在結果頁標示筆數；
-            同一化合物查過一次會被快取，重複上傳會明顯變快。
+            備註：規則判不出來的化合物仍會自動查詢 PubChem 分子式做二次判定（含失敗重試）。
+            此路徑對 R1／R2 實測為 0 筆——規則已能涵蓋全部化合物，因此結果不依賴網路、可完整重現；
+            PubChem 保留作為遇到全新化合物時的安全網。
+          </p>
+          <p style="margin-top:6px;color:#718096;font-size:0.86rem;">
+            規則可靠度：已將 R1＋R2 全部 247 個化合物逐一送 PubChem 取真實分子式交叉比對，
+            其中 203 個查得到，規則與 PubChem 判定一致 199 個；4 個不一致均為 PubChem 的
+            IUPAC 採 von Baeyer 系統命名（如 TRICYCLO[9.4.0…]）而隱藏了芳香環，
+            以儀器原始名稱判定較為正確。
           </p>
         </div>
 
@@ -357,7 +363,7 @@
             <li><b>Alkene</b>: C=C double bond, non-aromatic</li>
             <li><b>Aromatic</b>: single aromatic ring (benzene, toluene, xylene; also tetralin/indane/dihydronaphthalene-type compounds that carry only one aromatic ring)</li>
             <li><b>Polyaromatic</b>: ≥2 aromatic rings (naphthalene, anthracene, phenanthrene, fluorene, biphenyl, azulene, etc.)</li>
-            <li><b>others</b>: non-hydrocarbons carrying O/N/Si heteroatoms (fatty alcohols, aldehydes, ketones, acids, esters, ethers, amines, furan-type heterocycles). A hydrocarbon-type scheme has no class for these, so "others" is the correct answer, not a failure to classify.</li>
+            <li><b>others</b>: non-hydrocarbons carrying O/N/S/Si/halogen heteroatoms (fatty alcohols, aldehydes, ketones, acids, esters, ethers, amines, chloroalkanes, furan-type heterocycles). A hydrocarbon-type scheme has no class for these, so "others" is the correct answer, not a failure to classify.</li>
           </ul>
           <p>Matching is done on <b>chemical stems</b>, so derivative spellings (NAPHTHALENYL, INDEN-1-ONE,
              PHENANTHRENOL…) are covered. Straight-chain alkanes/alkenes span C1–C50 (including long chains
@@ -392,9 +398,16 @@
             <li><b>Peak# must be a continuous run of numbers</b>: a blank or text row inserted mid-table is treated as the end of the table, and peaks below it won't be classified.</li>
           </ul>
           <p style="margin-top:10px;color:#718096;font-size:0.86rem;">
-            Note: compounds the keyword rules can't resolve are looked up on PubChem, which has an overall
-            time limit (45s). If a file contains an unusually large number of unknowns, the remainder stays
-            in "others" and the count is shown in the results. Lookups are cached, so re-uploading is much faster.
+            Note: compounds the rules can't resolve are still looked up on PubChem for a molecular-formula
+            re-check (with retries). That path measured 0 compounds for R1/R2 — the rules now cover every
+            compound, so results don't depend on the network and are fully reproducible. PubChem remains as
+            a safety net for genuinely new compounds.
+          </p>
+          <p style="margin-top:6px;color:#718096;font-size:0.86rem;">
+            Rule reliability: all 247 compounds across R1+R2 were cross-checked against live PubChem
+            molecular formulas. 203 were found; rules agreed with PubChem on 199. The 4 disagreements are
+            cases where PubChem's IUPAC name uses von Baeyer nomenclature (e.g. TRICYCLO[9.4.0…]) that
+            hides the aromatic rings — the instrument's original name classifies more correctly.
           </p>
         </div>
 

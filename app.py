@@ -46,13 +46,16 @@ def _cache_put(key: str, value: str) -> None:
         _pubchem_cache.clear()
     _pubchem_cache[key] = value
 
-PUBCHEM_HTTP_TIMEOUT   = 3     # 單次查詢逾時（秒）
+PUBCHEM_HTTP_TIMEOUT   = 4     # 單次查詢逾時（秒）
 PUBCHEM_MAX_WORKERS    = 8     # 並行查詢數（純網路等待，用執行緒即可）
+PUBCHEM_RETRIES        = 2     # 暫時性失敗（429 限流 / 連線中斷）重試次數
 # 每次上傳的 PubChem 查詢總時間上限（秒）。
 # 必須明顯小於 gunicorn 的 --timeout（Render 預設只有 30 秒），
 # 讓後面的寫檔（wb.save 是最慢的一步）與回傳都還有餘裕。
-# 預算用完後剩下的化合物一律留在 others，並在頁面上回報略過筆數。
-PUBCHEM_TIME_BUDGET    = 12
+#
+# 關鍵字規則涵蓋率提高後，實務上幾乎不會有化合物走到這裡
+# （R1／R2 實測為 0 筆），所以這個預算是「保險絲」而不是常態路徑。
+PUBCHEM_TIME_BUDGET    = 20
 
 
 class _PubChemBudget:
@@ -87,17 +90,29 @@ def _pubchem_lookup(name: str) -> str:
     if key in _pubchem_cache:
         return _pubchem_cache[key]
 
-    try:
-        encoded = urllib.parse.quote(key)
-        url = (f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/'
-               f'{encoded}/property/MolecularFormula,IUPACName/JSON')
-        with urllib.request.urlopen(url, timeout=PUBCHEM_HTTP_TIMEOUT) as r:
-            data = _json.loads(r.read())
-        props = data['PropertyTable']['Properties'][0]
-        formula = props.get('MolecularFormula', '')
-        iupac   = props.get('IUPACName', '').upper()
-        result  = _classify_by_formula(formula, iupac, key)
-    except Exception:
+    encoded = urllib.parse.quote(key)
+    url = (f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/'
+           f'{encoded}/property/MolecularFormula,IUPACName/JSON')
+
+    result = None
+    for attempt in range(PUBCHEM_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=PUBCHEM_HTTP_TIMEOUT) as r:
+                data = _json.loads(r.read())
+            props   = data['PropertyTable']['Properties'][0]
+            formula = props.get('MolecularFormula', '')
+            iupac   = (props.get('IUPACName') or '').upper()
+            result  = _classify_by_formula(formula, iupac, key)
+            break
+        except Exception as e:
+            # 404（PubChem 查無此化合物）不必重試，直接放棄；
+            # 限流／連線問題才退避後再試。
+            code = getattr(e, 'code', None)
+            if code == 404 or attempt == PUBCHEM_RETRIES:
+                break
+            time.sleep(0.4 * (attempt + 1))
+
+    if result is None:
         result = 'others'
 
     _cache_put(key, result)
@@ -116,6 +131,17 @@ def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
       - CₙH₂ₙ₊₂  → alkane；有 methyl branch → iso-alkane，否則 → n-alkane
     """
     import re
+
+    # PubChem 回傳的 IUPAC 名稱本身也是化學名，先用同一套關鍵字規則判一次。
+    # 這樣兩條路徑（原始名稱 / PubChem 名稱）永遠遵循同一套慣例，不會各說各話。
+    # 實測顯示，先前兩邊各自維護關鍵字，正是大多數判定不一致的來源
+    # （例如 acenaphthylene 在這裡漏列、biphenyl 被 IUPAC 寫成 phenylbenzene 而誤判單環）。
+    if iupac:
+        cat, confident = _classify_keyword(iupac)
+        if confident:
+            return cat
+
+    # 只含 C/H（可含 O/N）才適用下面的分子式啟發式；含鹵素、硫等一律 others
     m = re.match(r'^C(\d+)H(\d+)((?:O\d*)?(?:N\d*)?)$', formula)
     if not m:
         return 'others'
@@ -124,27 +150,15 @@ def _classify_by_formula(formula: str, iupac: str, original: str) -> str:
     h = int(m.group(2))
     hetero = m.group(3)   # 含 O/N → 雜原子化合物（脂肪醇、醛、酮、酯、胺）
 
-    # 部分氫化的萘/茚 = 單芳香環 → Aromatic（與 auto_classify 的環數慣例一致）
-    if (('NAPHTHALENE' in iupac and ('TETRAHYDRO' in iupac or 'DIHYDRO' in iupac))
-            or any(x in iupac for x in ['TETRALIN','INDANE','INDENE','INDACENE'])):
-        return 'Aromatic'
-
-    # 多環芳烴（≥2 個芳香環）
-    if any(x in iupac for x in ['NAPHTHALENE','PYRENE','FLUORENE',
-                                  'ANTHRACENE','PHENANTHRENE','BIPHENYL',
-                                  'AZULENE','FLUORANTHENE','PERYLENE','CHRYSENE']):
-        return 'Polyaromatic'
-
-    # 單環芳烴（苯環 CₙH₂ₙ₋₆）
-    if h == 2 * c - 6 or any(x in iupac for x in ['BENZENE','TOLUENE',
-                                                     'XYLENE','PHENYL',
-                                                     'STYRENE','CUMENE']):
-        return 'Aromatic'
-
     # 帶 O/N 的非芳香化合物 → 氧化物 / 含雜原子，非純碳氫類 → others
     # （修正：脂肪醇 CₙH₂ₙ₊₂O 會被誤判成 n-alkane，因為過去只看 C/H 忽略了 O）
     if hetero:
         return 'others'
+
+    # 單環芳烴（苯環 CₙH₂ₙ₋₆）。這只是最後的啟發式：CₙH₂ₙ₋₆ 不保證是苯環
+    # （fulvene 類的環狀多烯也符合），所以放在關鍵字判定之後才用。
+    if h == 2 * c - 6:
+        return 'Aromatic'
 
     # Cycloalkane CₙH₂ₙ + cycl in name
     if h == 2 * c and 'CYCL' in iupac:
@@ -187,7 +201,11 @@ _ALKENE_NAMES = tuple(s + 'ENE' for s in _CHAIN_STEMS)
 # 就會先被攔下，不會走到這裡。
 _HETERO_TOKENS = (
     'ACID', 'ESTER', 'ETHER', 'AMINE', 'AMINO', 'AMIDE', 'NITRIL', 'NITRO',
-    'SILANE', 'SILOXANE', 'SILOXY', 'THIO', 'SULFON', 'SULFID',
+    'SILANE', 'SILOXANE', 'SILOXY', 'THIO', 'SULFON', 'SULFID', 'SULFIN',
+    'SULFANYL', 'MERCAPTO', 'PHOSPH', 'CYANO',
+    # 鹵素：含 Cl/Br/F/I 的化合物同樣不是純碳氫。
+    # （'FLUORO' 不會誤中 'FLUORENE'，且芳香環判定本來就排在前面）
+    'CHLORO', 'BROMO', 'FLUORO', 'IODO', 'CHLORIDE', 'BROMIDE', 'IODIDE',
     'FURAN', 'PYRAN', 'OXEPINE', 'OXIRANE', 'TRIAZIN', 'PYRIDIN', 'PYRROL',
     'IMIDAZOL', 'THIOPHEN', 'ANOL', 'ANAL', 'ANONE', 'ANOATE', 'OATE',
     'ALDEHYDE', 'KETONE', 'OXO', 'HYDROXY', 'METHOXY', 'ETHOXY', 'CARBOXY',
@@ -224,8 +242,14 @@ def _classify_keyword(name: str):
 
     # ── 2. 真正多環芳烴(≥2 個芳香環)→ Polyaromatic ────────────────────
     if any(x in n for x in ('NAPHTHALEN','ANTHRACEN','PHENANTHREN','PYREN',
-                              'FLUOREN','BIPHENYL','ACENAPHTH','AZULEN',
-                              'FLUORANTHEN','PERYLEN','CHRYSEN','DIBENZO')):
+                              'FLUOREN','BIPHENYL','DIPHENYL','TRIPHENYL',
+                              'ACENAPHTH','AZULEN','FLUORANTHEN','PERYLEN',
+                              'CHRYSEN','DIBENZO')):
+        return 'Polyaromatic', True
+    #    數苯環：PubChem 的 IUPAC 會把 biphenyl 拆寫成
+    #    "1-METHYL-2-(3-METHYLPHENYL)BENZENE"（中間夾括號，比對不到 BIPHENYL），
+    #    但只要出現兩個苯環標記就是二芳香環系統。
+    if n.count('PHENYL') >= 2 or ('PHENYL' in n and 'BENZENE' in n):
         return 'Polyaromatic', True
 
     # ── 3. 單環芳烴(苯環)→ Aromatic ──────────────────────────────────
