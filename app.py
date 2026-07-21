@@ -37,6 +37,14 @@ RT_C816_MAX     = 17.6
 
 # ── PubChem Hybrid 查詢（僅對 others 觸發）────────────────────────────
 _pubchem_cache: dict = {}   # in-memory cache，每次重啟清空
+PUBCHEM_CACHE_MAX = 5000    # 上限，避免長時間執行後無限成長吃光記憶體
+
+
+def _cache_put(key: str, value: str) -> None:
+    """寫入查詢快取；超過上限就整批清掉重來（用量小，不值得為此引入 LRU）。"""
+    if len(_pubchem_cache) >= PUBCHEM_CACHE_MAX:
+        _pubchem_cache.clear()
+    _pubchem_cache[key] = value
 
 PUBCHEM_HTTP_TIMEOUT   = 3     # 單次查詢逾時（秒）
 # 每次上傳的 PubChem 查詢總時間上限（秒）。
@@ -90,7 +98,7 @@ def _pubchem_lookup(name: str) -> str:
     except Exception:
         result = 'others'
 
-    _pubchem_cache[key] = result
+    _cache_put(key, result)
     return result
 
 
@@ -608,6 +616,11 @@ def process_gcms_workbook(file_bytes: bytes, original_filename: str):
                 r['pubchem_skipped'] = budget.skipped
                 break
 
+    # wb.save() 要把整份活頁簿序列化成 XML，是整個流程記憶體的最高點；
+    # 先釋放已用不到的 DataFrame，壓低峰值（Render 免費方案只有 512MB）。
+    all_sheets.clear()
+    del all_sheets
+
     out = io.BytesIO()
     wb.save(out)
     out.seek(0)
@@ -668,7 +681,25 @@ def classify():
     # 多工作表結果以 JSON（base64 編碼避免 header 特殊字元問題）夾帶在自訂 header 裡，
     # 前端解碼後逐一渲染每個工作表的統計卡片。
     payload = json.dumps(sheet_reports, ensure_ascii=False)
-    response.headers['X-Sheet-Reports'] = base64.b64encode(payload.encode('utf-8')).decode('ascii')
+    encoded = base64.b64encode(payload.encode('utf-8')).decode('ascii')
+
+    # HTTP header 有大小限制（gunicorn / 反向代理常見上限 8190 bytes）。
+    # 工作表很多時整包 JSON 可能超過而讓整個回應被擋掉，這時改送精簡版：
+    # 只保留 sheet 名稱與狀態，捨棄各類別明細（Excel 檔內仍有完整結果）。
+    if len(encoded) > 6000:
+        slim = []
+        for r in sheet_reports:
+            if r.get('status') == 'ok':
+                slim.append({k: r[k] for k in
+                             ('sheet', 'status', 'c8minus', 'c816_total', 'c16plus',
+                              'passed', 'error', 'auto_classified') if k in r})
+            else:
+                slim.append({'sheet': r.get('sheet'), 'status': r.get('status'),
+                             'reason': str(r.get('reason', ''))[:120]})
+        slim_payload = json.dumps(slim, ensure_ascii=False)
+        encoded = base64.b64encode(slim_payload.encode('utf-8')).decode('ascii')
+
+    response.headers['X-Sheet-Reports'] = encoded
     response.headers['Access-Control-Expose-Headers'] = 'X-Sheet-Reports'
     return response
 
