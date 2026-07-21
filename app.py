@@ -47,10 +47,12 @@ def _cache_put(key: str, value: str) -> None:
     _pubchem_cache[key] = value
 
 PUBCHEM_HTTP_TIMEOUT   = 3     # 單次查詢逾時（秒）
+PUBCHEM_MAX_WORKERS    = 8     # 並行查詢數（純網路等待，用執行緒即可）
 # 每次上傳的 PubChem 查詢總時間上限（秒）。
-# 需明顯小於 Procfile 裡 gunicorn 的 --timeout，讓解析、寫檔、回傳都還有餘裕；
+# 必須明顯小於 gunicorn 的 --timeout（Render 預設只有 30 秒），
+# 讓後面的寫檔（wb.save 是最慢的一步）與回傳都還有餘裕。
 # 預算用完後剩下的化合物一律留在 others，並在頁面上回報略過筆數。
-PUBCHEM_TIME_BUDGET    = 45
+PUBCHEM_TIME_BUDGET    = 12
 
 
 class _PubChemBudget:
@@ -206,6 +208,36 @@ def auto_classify(name: str) -> str:
     return 'others'
 
 
+def _prefetch_pubchem(names, budget=None) -> None:
+    """
+    把「關鍵字判不出來」的化合物名稱一次並行查完，結果寫進 _pubchem_cache。
+
+    這些查詢純粹是等網路回應，逐一串接跑會直接決定整個 request 的長度
+    （實測 80 個化合物循序查要 ~20 秒，是逾時被 SIGKILL 的主因）。
+    改用執行緒池並行，同樣的量降到數秒。
+    """
+    todo = []
+    seen = set()
+    for name in names:
+        key = str(name).upper().strip()
+        if key and key not in seen and key not in _pubchem_cache:
+            seen.add(key)
+            todo.append(name)
+    if not todo:
+        return
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _one(nm):
+        if budget is not None and not budget.allows_lookup():
+            return
+        _pubchem_lookup(nm)          # 內部會自行寫入快取
+
+    workers = min(PUBCHEM_MAX_WORKERS, len(todo))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(_one, todo))
+
+
 def _pubchem_fallback(name: str, budget=None) -> str:
     """
     先 auto_classify，若結果是 others 才查 PubChem。
@@ -283,7 +315,9 @@ def _process_single_sheet(df_raw, header_row_idx, ws, budget=None):
     table_end = _find_table_end(df_raw, header_row_idx)
     data = df_raw.iloc[header_row_idx:table_end].copy()
     data.columns = data.iloc[0]
-    data = data.iloc[1:].reset_index(drop=True)
+    # 明確 .copy()：切完片再直接指派欄位會被 pandas 判定為 chained assignment，
+    # 除了在 log 洗出大量 FutureWarning，pandas 3.0 起也會真的失效。
+    data = data.iloc[1:].reset_index(drop=True).copy()
     data.columns = [str(c).strip().replace('\xa0', '') for c in data.columns]
 
     # 必要欄位檢查：表頭若被合併儲存格、手動改名，會在這裡直接抓不到欄位
@@ -306,7 +340,14 @@ def _process_single_sheet(df_raw, header_row_idx, ws, budget=None):
 
     # Step 3: 自動分類
     mask_empty = data['Category'].isin(['nan','','NaN']) | data['Category'].isna()
-    data.loc[mask_empty, 'Category'] = data.loc[mask_empty, 'Name'].apply(
+    pending = data.loc[mask_empty, 'Name']
+
+    # 先用關鍵字規則篩一輪，把判不出來的名稱集中起來並行查 PubChem，
+    # 避免在下面的 apply 裡一個一個等網路（那正是 Render 逾時的原因）。
+    unresolved = [nm for nm in pending.unique() if auto_classify(str(nm)) == 'others']
+    _prefetch_pubchem(unresolved, budget)
+
+    data.loc[mask_empty, 'Category'] = pending.apply(
         lambda nm: _pubchem_fallback(nm, budget)
     )
     auto_classified_count = int(mask_empty.sum())
