@@ -6,9 +6,11 @@ GC-MS FID 成分分類網站
 import io
 import os
 import json
+import time
 import base64
 import pandas as pd
 from flask import Flask, request, send_file, render_template, jsonify
+from werkzeug.exceptions import HTTPException
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.chart import BarChart, Reference
@@ -36,6 +38,34 @@ RT_C816_MAX     = 17.6
 # ── PubChem Hybrid 查詢（僅對 others 觸發）────────────────────────────
 _pubchem_cache: dict = {}   # in-memory cache，每次重啟清空
 
+PUBCHEM_HTTP_TIMEOUT   = 3     # 單次查詢逾時（秒）
+# 每次上傳的 PubChem 查詢總時間上限（秒）。
+# 需明顯小於 Procfile 裡 gunicorn 的 --timeout，讓解析、寫檔、回傳都還有餘裕；
+# 預算用完後剩下的化合物一律留在 others，並在頁面上回報略過筆數。
+PUBCHEM_TIME_BUDGET    = 45
+
+
+class _PubChemBudget:
+    """
+    整份活頁簿共用的 PubChem 查詢時間預算。
+
+    遠端（Render + gunicorn）對單一 request 有 worker timeout；若某份檔案含大量
+    無法用關鍵字判定的化合物，逐一查 PubChem 會拖垮整個 request，最後回傳的是
+    平台的 HTML 錯誤頁而不是 JSON。這裡設一個硬上限：預算用完後不再發出網路查詢，
+    剩下的一律留在 'others'，並回報略過筆數，讓使用者知道有部分未做二次判定。
+    """
+
+    def __init__(self, seconds: float = PUBCHEM_TIME_BUDGET):
+        self._deadline = time.monotonic() + seconds
+        self.skipped = 0
+
+    def allows_lookup(self) -> bool:
+        if time.monotonic() < self._deadline:
+            return True
+        self.skipped += 1
+        return False
+
+
 def _pubchem_lookup(name: str) -> str:
     """
     查 PubChem PUG REST API 取得分子式，依分子式二次分類。
@@ -51,7 +81,7 @@ def _pubchem_lookup(name: str) -> str:
         encoded = urllib.parse.quote(key)
         url = (f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/'
                f'{encoded}/property/MolecularFormula,IUPACName/JSON')
-        with urllib.request.urlopen(url, timeout=5) as r:
+        with urllib.request.urlopen(url, timeout=PUBCHEM_HTTP_TIMEOUT) as r:
             data = _json.loads(r.read())
         props = data['PropertyTable']['Properties'][0]
         formula = props.get('MolecularFormula', '')
@@ -168,12 +198,23 @@ def auto_classify(name: str) -> str:
     return 'others'
 
 
-def _pubchem_fallback(name: str) -> str:
-    """先 auto_classify，若結果是 others 才查 PubChem。"""
+def _pubchem_fallback(name: str, budget=None) -> str:
+    """
+    先 auto_classify，若結果是 others 才查 PubChem。
+    已快取的名稱直接取用（不佔預算）；未快取且預算已用罄時，保持 'others' 不再發出網路查詢。
+    """
     result = auto_classify(name)
-    if result == 'others':
-        result = _pubchem_lookup(name)
-    return result
+    if result != 'others':
+        return result
+
+    key = name.upper().strip()
+    if key in _pubchem_cache:
+        return _pubchem_cache[key]
+
+    if budget is not None and not budget.allows_lookup():
+        return 'others'
+
+    return _pubchem_lookup(name)
 
 
 def _find_header_row(df_raw):
@@ -184,19 +225,55 @@ def _find_header_row(df_raw):
     也含類似欄位），一律取「第一個」出現的列——這對應 MC Peak Table 一定排在最前面的慣例。
     """
     for i, row in df_raw.iterrows():
-        vals = [str(v) for v in row.values]
+        vals = [str(v).strip().replace('\xa0', '') for v in row.values]
         if 'Peak#' in vals or 'Ret.Time' in vals:
             return i
     return None
 
 
-def _process_single_sheet(df_raw, header_row_idx, ws):
+def _find_table_end(df_raw, header_row_idx):
+    """
+    找出 MC Peak Table 的結束列（exclusive）。
+
+    Shimadzu GCMSsolution 的原始匯出檔在 MC Peak Table 之後，還會接著
+    [MS Similarity Search Results]、[MS Spectrum] 等區塊，動輒數千列。
+    若不設邊界，那些列會被當成 peak 一起送進分類流程 —— 除了統計失真，
+    更會觸發數千次 PubChem 查詢，直接讓遠端 worker 逾時（回傳 HTML 錯誤頁，
+    前端就會出現 "Unexpected token '<' ... is not valid JSON"）。
+
+    判定方式：Peak# 欄位必須是數字，遇到第一個非數字／空白列即視為表格結尾。
+    """
+    header = [str(v).strip().replace('\xa0', '') for v in df_raw.iloc[header_row_idx].values]
+    key_col = None
+    for candidate in ('Peak#', 'Ret.Time'):
+        if candidate in header:
+            key_col = header.index(candidate)
+            break
+    if key_col is None:
+        return len(df_raw)
+
+    end = header_row_idx + 1
+    for i in range(header_row_idx + 1, len(df_raw)):
+        v = df_raw.iloc[i, key_col]
+        if pd.isna(v):
+            break
+        try:
+            float(v)
+        except (TypeError, ValueError):
+            break
+        end = i + 1
+    return end
+
+
+def _process_single_sheet(df_raw, header_row_idx, ws, budget=None):
     """
     對單一工作表執行：清理 → 分類 → 統計 → 寫回 Excel（上色、Summary、圖表、驗證報告）。
     ws 是這個工作表對應的 openpyxl worksheet（屬於呼叫端已載入的同一份 wb，會被就地修改）。
+    budget 是整份活頁簿共用的 PubChem 查詢時間預算（見 _PubChemBudget）。
     回傳統計 dict（不含 'sheet'/'status'，由呼叫端 process_gcms_workbook 補上）。
     """
-    data = df_raw.iloc[header_row_idx:].copy()
+    table_end = _find_table_end(df_raw, header_row_idx)
+    data = df_raw.iloc[header_row_idx:table_end].copy()
     data.columns = data.iloc[0]
     data = data.iloc[1:].reset_index(drop=True)
     data.columns = [str(c).strip().replace('\xa0', '') for c in data.columns]
@@ -221,7 +298,9 @@ def _process_single_sheet(df_raw, header_row_idx, ws):
 
     # Step 3: 自動分類
     mask_empty = data['Category'].isin(['nan','','NaN']) | data['Category'].isna()
-    data.loc[mask_empty, 'Category'] = data.loc[mask_empty, 'Name'].apply(_pubchem_fallback)
+    data.loc[mask_empty, 'Category'] = data.loc[mask_empty, 'Name'].apply(
+        lambda nm: _pubchem_fallback(nm, budget)
+    )
     auto_classified_count = int(mask_empty.sum())
 
     # Step 4: 計算統計（在操作 Excel 前完成）
@@ -482,22 +561,23 @@ def process_gcms_workbook(file_bytes: bytes, original_filename: str):
       - sheet_reports：list[dict]，每個工作表一筆，含 'sheet'、'status'
         ('ok' | 'skipped' | 'error') 與對應的統計數字或原因說明。
     """
-    xl = pd.ExcelFile(io.BytesIO(file_bytes))
-    wb = load_workbook(io.BytesIO(file_bytes))
+    # 一次解析整份活頁簿（sheet_name=None 回傳 {sheet: DataFrame}）。
+    # 先前是在迴圈裡逐一 read_excel，等於每個工作表都把整個檔案重新 parse 一遍。
+    try:
+        all_sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, header=None)
+        wb = load_workbook(io.BytesIO(file_bytes))
+    except Exception:
+        raise ValueError(
+            '這個檔案無法被當成 Excel 開啟。可能是檔案損毀，或副檔名雖然是 .xlsx '
+            '但內容其實是舊版 .xls／.csv／其他格式。請在 Excel 中開啟後，'
+            '用「另存新檔 → Excel 活頁簿 (.xlsx)」重新輸出再上傳。'
+        )
 
+    budget = _PubChemBudget()
     sheet_reports = []
     any_ok = False
 
-    for sheet_name in xl.sheet_names:
-        try:
-            df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
-        except Exception as e:
-            sheet_reports.append({
-                'sheet': sheet_name, 'status': 'error',
-                'reason': f'無法讀取此工作表：{e}',
-            })
-            continue
-
+    for sheet_name, df_raw in all_sheets.items():
         header_row_idx = _find_header_row(df_raw)
         if header_row_idx is None:
             sheet_reports.append({
@@ -507,7 +587,7 @@ def process_gcms_workbook(file_bytes: bytes, original_filename: str):
             continue
 
         try:
-            report = _process_single_sheet(df_raw, header_row_idx, wb[sheet_name])
+            report = _process_single_sheet(df_raw, header_row_idx, wb[sheet_name], budget)
             report['sheet']  = sheet_name
             report['status'] = 'ok'
             sheet_reports.append(report)
@@ -521,10 +601,35 @@ def process_gcms_workbook(file_bytes: bytes, original_filename: str):
             '（需要「Peak#」或「Ret.Time」表頭），請確認上傳的是 Shimadzu GCMSsolution 匯出格式'
         )
 
+    if budget.skipped:
+        # 讓使用者知道有部分化合物因時間預算未做 PubChem 二次判定（仍留在 others）
+        for r in sheet_reports:
+            if r.get('status') == 'ok':
+                r['pubchem_skipped'] = budget.skipped
+                break
+
     out = io.BytesIO()
     wb.save(out)
     out.seek(0)
     return out.read(), sheet_reports
+
+
+# ── 錯誤一律回 JSON ────────────────────────────────────────────────────
+# 預設 Flask/Werkzeug 的錯誤頁是 HTML，前端 res.json() 解析時會炸出
+# "Unexpected token '<' ... is not valid JSON"，讓真正的錯誤原因完全看不到。
+@app.errorhandler(HTTPException)
+def _handle_http_exception(e):
+    if e.code == 413:
+        msg = '檔案超過 16MB 上限，請先刪掉用不到的工作表或改上傳精簡後的 Peak Table'
+    else:
+        msg = f'{e.code} {e.name}：{e.description}'
+    return jsonify({'error': msg}), e.code
+
+
+@app.errorhandler(Exception)
+def _handle_unexpected(e):
+    app.logger.exception('unhandled error in request')
+    return jsonify({'error': f'伺服器未預期錯誤（{type(e).__name__}）：{e}'}), 500
 
 
 @app.route('/')
@@ -535,10 +640,13 @@ def index():
 @app.route('/classify', methods=['POST'])
 def classify():
     if 'file' not in request.files:
-        return jsonify({'error': 'no file'}), 400
+        return jsonify({'error': '沒有收到檔案，請重新選擇後再送出'}), 400
     f = request.files['file']
-    if not f.filename.endswith('.xlsx'):
-        return jsonify({'error': 'xlsx only'}), 400
+    if not f.filename.lower().endswith('.xlsx'):
+        return jsonify({
+            'error': f'只接受 .xlsx 格式（收到的是「{f.filename}」）。'
+                     '舊版 .xls 與 .csv 不支援，請先在 Excel 另存成 .xlsx 再上傳。'
+        }), 400
 
     file_bytes = f.read()
     original_filename = secure_filename(f.filename)

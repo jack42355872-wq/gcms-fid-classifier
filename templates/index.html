@@ -333,7 +333,14 @@
             <li><b>檔案格式必須是 .xlsx</b>：.xls（舊版 Excel）、.csv 不支援</li>
             <li><b>Category 欄位若已手動填寫</b>：系統只對「空白」的列自動分類，已填寫的值會直接沿用——手動類別名稱要跟七大類別完全一致（含大小寫），拼錯（例如打成 "aromatics" 而非 "Aromatic"）會被當成新的、未預期的類別，Summary 加總會對不起來</li>
             <li><b>一個工作表只認第一個 Peak Table 表頭</b>：若同一工作表內多次出現「Peak#」字樣，只有第一個會被採用</li>
+            <li><b>可直接上傳 GCMSsolution 原始匯出檔</b>：系統只讀取 MC Peak Table 範圍（Peak# 為數字的連續列），後面的 [MS Similarity Search Results]、[MS Spectrum] 等區塊會自動忽略，不必先手動刪掉</li>
+            <li><b>Peak# 欄位必須是連續的數字</b>：Peak Table 中間若插入空白列或文字列，系統會判定表格在該處結束，後面的 peak 不會被分類</li>
           </ul>
+          <p style="margin-top:10px;color:#718096;font-size:0.86rem;">
+            備註：無法用關鍵字判定的化合物會查詢 PubChem，此步驟有總時間上限（45 秒）。
+            若某份檔案的未知化合物特別多，超過上限的部分會留在 others 並在結果頁標示筆數；
+            同一化合物查過一次會被快取，重複上傳會明顯變快。
+          </p>
         </div>
 
         <div class="docs-lang docs-en" style="display:none">
@@ -374,7 +381,14 @@
             <li><b>File must be .xlsx</b>: legacy .xls and .csv are not supported.</li>
             <li><b>If the Category column is already filled in manually</b>: the app only auto-classifies blank rows — pre-filled values are used as-is. Manual entries must match the seven category names exactly (case-sensitive); a typo (e.g. "aromatics" instead of "Aromatic") is treated as a new, unexpected category and will throw off the Summary totals.</li>
             <li><b>Only the first Peak Table header per sheet is used</b>: if "Peak#" appears more than once in a sheet, only the first occurrence is read.</li>
+            <li><b>Raw GCMSsolution exports can be uploaded as-is</b>: only the MC Peak Table range (consecutive rows with a numeric Peak#) is read. Trailing sections such as [MS Similarity Search Results] and [MS Spectrum] are ignored automatically — no need to strip them first.</li>
+            <li><b>Peak# must be a continuous run of numbers</b>: a blank or text row inserted mid-table is treated as the end of the table, and peaks below it won't be classified.</li>
           </ul>
+          <p style="margin-top:10px;color:#718096;font-size:0.86rem;">
+            Note: compounds the keyword rules can't resolve are looked up on PubChem, which has an overall
+            time limit (45s). If a file contains an unusually large number of unknowns, the remainder stays
+            in "others" and the count is shown in the results. Lookups are cached, so re-uploading is much faster.
+          </p>
         </div>
 
       </div>
@@ -395,6 +409,13 @@
         errorNoFile: '沒有收到檔案',
         errorFormat: '只接受 .xlsx 檔案',
         errorServer: '伺服器錯誤',
+        errorNonJson: function(status) {
+          return '伺服器回應異常（HTTP ' + status + '）。若檔案很大或分頁很多，可能是處理逾時；' +
+                 '請稍後再試，或先刪掉用不到的工作表再上傳。';
+        },
+        pubchemSkipped: function(n) {
+          return '⏱ 有 ' + n + ' 個化合物因查詢時間上限未做 PubChem 二次判定，暫留在 others。';
+        },
         overview: function(ok, skip, err) {
           return '共偵測到 ' + (ok + skip + err) + ' 個工作表，成功分類 ' + ok + ' 個' +
                  (skip > 0 ? '、略過 ' + skip + ' 個' : '') +
@@ -410,6 +431,13 @@
         errorNoFile: 'No file received',
         errorFormat: 'Only .xlsx files are accepted',
         errorServer: 'Server error',
+        errorNonJson: function(status) {
+          return 'Unexpected server response (HTTP ' + status + '). Large files or many sheets may ' +
+                 'have timed out — please retry, or remove unused sheets before uploading.';
+        },
+        pubchemSkipped: function(n) {
+          return '⏱ ' + n + ' compound(s) skipped the PubChem re-check due to the lookup time limit; they remain in "others".';
+        },
         overview: function(ok, skip, err) {
           return 'Detected ' + (ok + skip + err) + ' sheet(s): ' + ok + ' classified' +
                  (skip > 0 ? ', ' + skip + ' skipped' : '') +
@@ -516,6 +544,11 @@
     function renderSheetReports(reports) {
       var okCount = 0, skipCount = 0, errCount = 0;
       var cardsHtml = '';
+      var pubchemSkipped = 0;
+
+      reports.forEach(function(r) {
+        if (r.pubchem_skipped) pubchemSkipped = r.pubchem_skipped;
+      });
 
       reports.forEach(function(r) {
         if (r.status === 'ok') {
@@ -565,6 +598,11 @@
       });
 
       document.getElementById('sheet-overview').textContent = i18n[currentLang].overview(okCount, skipCount, errCount);
+      if (pubchemSkipped > 0) {
+        cardsHtml = '<div class="sheet-notice skip">' +
+                    escapeHtml(i18n[currentLang].pubchemSkipped(pubchemSkipped)) +
+                    '</div>' + cardsHtml;
+      }
       document.getElementById('sheet-cards').innerHTML = cardsHtml;
     }
 
@@ -583,7 +621,17 @@
       fetch('/classify', { method: 'POST', body: formData })
         .then(function(res) {
           if (!res.ok) {
-            return res.json().then(function(err) { throw new Error(err.error || i18n[currentLang].errorServer); });
+            // 不能直接 res.json()：平台層的 502/504（worker 逾時、部署中）回的是 HTML，
+            // 直接 parse 會丟出 "Unexpected token '<'"，把真正的錯誤原因蓋掉。
+            return res.text().then(function(body) {
+              var msg;
+              try {
+                msg = JSON.parse(body).error;
+              } catch (e) {
+                msg = i18n[currentLang].errorNonJson(res.status);
+              }
+              throw new Error(msg || i18n[currentLang].errorServer);
+            });
           }
 
           var raw = res.headers.get('X-Sheet-Reports');
