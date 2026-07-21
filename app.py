@@ -5,6 +5,8 @@ GC-MS FID 成分分類網站
 
 import io
 import os
+import json
+import base64
 import pandas as pd
 from flask import Flask, request, send_file, render_template, jsonify
 from openpyxl import load_workbook
@@ -174,30 +176,44 @@ def _pubchem_fallback(name: str) -> str:
     return result
 
 
-def process_gcms_file(file_bytes: bytes, original_filename: str):
-    # Step 1: 動態定位 header row
-    # 自動偵測工作表（相容 Sheet1 / 工作表1 等不同語言設定）
-    xl = pd.ExcelFile(io.BytesIO(file_bytes))
-    sheet_name = xl.sheet_names[0]
-    df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
-    header_row_idx = None
+def _find_header_row(df_raw):
+    """
+    在原始（header=None）DataFrame 中找出含 'Peak#' 或 'Ret.Time' 的表頭列。
+    找不到回傳 None（代表這個工作表不是有效的 Peak Table，呼叫端應略過）。
+    若同一工作表出現多次（例如原始 GCMSsolution 匯出檔的 MS Similarity Search 區塊
+    也含類似欄位），一律取「第一個」出現的列——這對應 MC Peak Table 一定排在最前面的慣例。
+    """
     for i, row in df_raw.iterrows():
         vals = [str(v) for v in row.values]
         if 'Peak#' in vals or 'Ret.Time' in vals:
-            header_row_idx = i
-            break
-    if header_row_idx is None:
-        raise ValueError("找不到 Peak Table header")
+            return i
+    return None
 
+
+def _process_single_sheet(df_raw, header_row_idx, ws):
+    """
+    對單一工作表執行：清理 → 分類 → 統計 → 寫回 Excel（上色、Summary、圖表、驗證報告）。
+    ws 是這個工作表對應的 openpyxl worksheet（屬於呼叫端已載入的同一份 wb，會被就地修改）。
+    回傳統計 dict（不含 'sheet'/'status'，由呼叫端 process_gcms_workbook 補上）。
+    """
     data = df_raw.iloc[header_row_idx:].copy()
     data.columns = data.iloc[0]
     data = data.iloc[1:].reset_index(drop=True)
     data.columns = [str(c).strip().replace('\xa0', '') for c in data.columns]
 
+    # 必要欄位檢查：表頭若被合併儲存格、手動改名，會在這裡直接抓不到欄位
+    required_cols = {'Ret.Time', 'Conc.', 'Name'}
+    missing = required_cols - set(data.columns)
+    if missing:
+        raise ValueError(
+            f'缺少必要欄位：{"、".join(sorted(missing))}'
+            '（表頭列可能被合併儲存格、手動改了欄名，或欄名前後多了空白字元）'
+        )
+
     # Step 2: 清理
     data['Ret.Time'] = pd.to_numeric(data['Ret.Time'], errors='coerce')
     data['Conc.']    = pd.to_numeric(data['Conc.'],    errors='coerce')
-    data['Name']     = data['Name'].astype(str).str.strip() if 'Name' in data.columns else ''
+    data['Name']     = data['Name'].astype(str).str.strip()
     if 'Category' in data.columns:
         data['Category'] = data['Category'].astype(str).str.strip().str.replace('\xa0','',regex=False)
     else:
@@ -229,12 +245,7 @@ def process_gcms_file(file_bytes: bytes, original_filename: str):
     passed       = error < 0.01
     others_816   = filt816[filt816['Category']=='others'][['Ret.Time','Name','Conc.']].to_dict('records')
 
-    # Step 5: 開啟 Excel
-    wb = load_workbook(io.BytesIO(file_bytes))
-    sheet_name_wb = wb.sheetnames[0]
-    ws = wb[sheet_name_wb]
-
-    # 確認是否已有 Summary 表格
+    # Step 5: 確認是否已有 Summary 表格（ws 由呼叫端傳入，屬於已載入的工作簿）
     summary_header_row = None
     for row in ws.iter_rows():
         for cell in row:
@@ -444,23 +455,76 @@ def process_gcms_file(file_bytes: bytes, original_filename: str):
             ws.cell(row=r, column=2).value = rec.get('Ret.Time', '')
             ws.cell(row=r, column=3).value = rec.get('Conc.', '')
 
+    # 明確轉成原生 Python 型別（pandas/numpy 運算結果是 numpy.float64／numpy.bool_，
+    # 標準 json 模組無法序列化，之後要塞進 response header 的 JSON payload會直接炸掉）
+    validation_report = {
+        'c8minus':         float(c8minus),
+        'c816_total':      float(c816_total),
+        'c16plus':         float(c16plus),
+        'grand_total':     float(grand_total),
+        'all_conc_sum':    float(all_conc_sum),
+        'error':           float(round(error, 4)),
+        'passed':          bool(passed),
+        'auto_classified': auto_classified_count,
+        'sums_816':        {k: float(round(v, 2)) for k, v in sums_816.items()},
+    }
+    return validation_report
+
+
+def process_gcms_workbook(file_bytes: bytes, original_filename: str):
+    """
+    自動掃描整份活頁簿的「每一個」工作表：
+    只要該工作表含有效 Peak Table 表頭（'Peak#' 或 'Ret.Time'），就自動偵測並分類；
+    不含的工作表視為無關資料（例如備註頁、其他分析結果），直接略過、不影響其他工作表。
+    回傳 (result_bytes, sheet_reports)：
+      - result_bytes：同一份 xlsx，每個成功分類的工作表已就地寫入 Category/Distribution/
+        Summary/圖表/驗證報告；被略過或出錯的工作表原封不動。
+      - sheet_reports：list[dict]，每個工作表一筆，含 'sheet'、'status'
+        ('ok' | 'skipped' | 'error') 與對應的統計數字或原因說明。
+    """
+    xl = pd.ExcelFile(io.BytesIO(file_bytes))
+    wb = load_workbook(io.BytesIO(file_bytes))
+
+    sheet_reports = []
+    any_ok = False
+
+    for sheet_name in xl.sheet_names:
+        try:
+            df_raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None)
+        except Exception as e:
+            sheet_reports.append({
+                'sheet': sheet_name, 'status': 'error',
+                'reason': f'無法讀取此工作表：{e}',
+            })
+            continue
+
+        header_row_idx = _find_header_row(df_raw)
+        if header_row_idx is None:
+            sheet_reports.append({
+                'sheet': sheet_name, 'status': 'skipped',
+                'reason': '找不到 Peak Table 表頭（需含「Peak#」或「Ret.Time」欄位），已略過此工作表',
+            })
+            continue
+
+        try:
+            report = _process_single_sheet(df_raw, header_row_idx, wb[sheet_name])
+            report['sheet']  = sheet_name
+            report['status'] = 'ok'
+            sheet_reports.append(report)
+            any_ok = True
+        except Exception as e:
+            sheet_reports.append({'sheet': sheet_name, 'status': 'error', 'reason': str(e)})
+
+    if not any_ok:
+        raise ValueError(
+            '整份活頁簿中沒有任何工作表含有效的 Peak Table'
+            '（需要「Peak#」或「Ret.Time」表頭），請確認上傳的是 Shimadzu GCMSsolution 匯出格式'
+        )
+
     out = io.BytesIO()
     wb.save(out)
     out.seek(0)
-
-    validation_report = {
-        'c8minus':         c8minus,
-        'c816_total':      c816_total,
-        'c16plus':         c16plus,
-        'grand_total':     grand_total,
-        'all_conc_sum':    all_conc_sum,
-        'error':           round(error, 4),
-        'passed':          passed,
-        'auto_classified': auto_classified_count,
-        'others_816':      others_816,
-        'sums_816':        {k: round(v, 2) for k, v in sums_816.items()},
-    }
-    return out.read(), validation_report
+    return out.read(), sheet_reports
 
 
 @app.route('/')
@@ -480,7 +544,7 @@ def classify():
     original_filename = secure_filename(f.filename)
 
     try:
-        result_bytes, report = process_gcms_file(file_bytes, original_filename)
+        result_bytes, sheet_reports = process_gcms_workbook(file_bytes, original_filename)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -493,23 +557,11 @@ def classify():
         as_attachment=True,
         download_name=out_filename,
     )
-    response.headers['X-C8minus']      = str(report['c8minus'])
-    response.headers['X-C816total']    = str(report['c816_total'])
-    response.headers['X-C16plus']      = str(report['c16plus'])
-    response.headers['X-GrandTotal']   = str(report['grand_total'])
-    response.headers['X-Passed']       = str(report['passed'])
-    response.headers['X-AutoClass']    = str(report['auto_classified'])
-    s816 = report['sums_816']
-    response.headers['X-Aromatic']     = str(round(s816.get('Aromatic',     0.0), 2))
-    response.headers['X-Polyaromatic'] = str(round(s816.get('Polyaromatic', 0.0), 2))
-    response.headers['X-Nalkane']      = str(round(s816.get('n-alkane',     0.0), 2))
-    response.headers['X-Isoalkane']    = str(round(s816.get('iso-alkane',   0.0), 2))
-    response.headers['X-Cyclic']       = str(round(s816.get('cyclic',       0.0), 2))
-    response.headers['X-Alkene']       = str(round(s816.get('Alkene',       0.0), 2))
-    response.headers['X-Others']       = str(round(s816.get('others',       0.0), 2))
-    n_val   = s816.get('n-alkane',   0.0)
-    iso_val = s816.get('iso-alkane', 0.0)
-    response.headers['X-InRatio'] = str(round(iso_val / n_val, 2) if n_val > 0 else 0.0)
+    # 多工作表結果以 JSON（base64 編碼避免 header 特殊字元問題）夾帶在自訂 header 裡，
+    # 前端解碼後逐一渲染每個工作表的統計卡片。
+    payload = json.dumps(sheet_reports, ensure_ascii=False)
+    response.headers['X-Sheet-Reports'] = base64.b64encode(payload.encode('utf-8')).decode('ascii')
+    response.headers['Access-Control-Expose-Headers'] = 'X-Sheet-Reports'
     return response
 
 

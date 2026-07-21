@@ -166,6 +166,72 @@
       color: #c53030;
       font-size: 0.9rem;
     }
+
+    /* ── 多工作表結果卡片 ── */
+    .sheet-overview {
+      font-size: 0.88rem;
+      color: #4a5568;
+      background: #f7fafc;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+    }
+    .sheet-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+    .sheet-card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1a365d;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sheet-notice {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 14px;
+      font-size: 0.88rem;
+    }
+    .sheet-notice.skip  { background: #edf2f7; color: #4a5568; }
+    .sheet-notice.error { background: #fed7d7; color: #9b2c2c; }
+    .sheet-notice .sheet-name { font-weight: 700; }
+
+    /* ── 分類規則 / 使用說明（文件區塊） ── */
+    .docs-card { margin-top: 20px; padding: 24px 40px; }
+    details.docs summary {
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 1.02rem;
+      color: #1a365d;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    details.docs summary::-webkit-details-marker { display: none; }
+    details.docs summary::after {
+      content: '▾';
+      color: #a0aec0;
+      transition: transform 0.2s;
+    }
+    details.docs[open] summary::after { transform: rotate(180deg); }
+    .docs-body { margin-top: 16px; color: #2d3748; font-size: 0.92rem; line-height: 1.65; }
+    .docs-body h3 {
+      font-size: 0.98rem;
+      color: #2b6cb0;
+      margin: 18px 0 8px;
+      border-left: 4px solid #4299e1;
+      padding-left: 10px;
+    }
+    .docs-body h3:first-child { margin-top: 0; }
+    .docs-body p { margin: 6px 0; }
+    .docs-body ul, .docs-body ol { margin: 6px 0 6px 22px; }
+    .docs-body li { margin: 4px 0; }
   </style>
 </head>
 <body>
@@ -177,9 +243,9 @@
 
   <h1 data-zh="🔬 GC-MS FID 成分分類工具" data-en="🔬 GC-MS FID Classifier">🔬 GC-MS FID 成分分類工具</h1>
   <p class="subtitle"
-     data-zh="上傳 Shimadzu GC-MS 輸出的 xlsx，自動分類並加總 C8-16 成分"
-     data-en="Upload a Shimadzu GC-MS xlsx — auto-classify and summarize C8-16 components">
-    上傳 Shimadzu GC-MS 輸出的 xlsx，自動分類並加總 C8-16 成分
+     data-zh="上傳 Shimadzu GC-MS 輸出的 xlsx，自動分類並加總 C8-16 成分；活頁簿內多個工作表會自動逐一偵測分類"
+     data-en="Upload a Shimadzu GC-MS xlsx — auto-classify and summarize C8-16 components; every sheet in the workbook is auto-detected and classified">
+    上傳 Shimadzu GC-MS 輸出的 xlsx，自動分類並加總 C8-16 成分；活頁簿內多個工作表會自動逐一偵測分類
   </p>
 
   <div class="card">
@@ -210,58 +276,9 @@
     <div id="error-box"></div>
 
     <div id="report">
-      <h2 data-zh="📊 驗證報告" data-en="📊 Validation Report">📊 驗證報告</h2>
-      <div class="report-grid">
-        <div class="report-item">
-          <div class="label">C8-</div>
-          <div class="value" id="r-c8m">—</div>
-        </div>
-        <div class="report-item highlight">
-          <div class="label" data-zh="C8-16 總計" data-en="C8-16 Total">C8-16 總計</div>
-          <div class="value" id="r-c816">—</div>
-        </div>
-        <div class="report-item">
-          <div class="label">C16+</div>
-          <div class="value" id="r-c16p">—</div>
-        </div>
-      </div>
-
-      <div class="category-grid">
-        <div class="cat-item" style="background:#92D050;color:#1a3a0a;">
-          <div class="cat-label">Aromatic</div>
-          <div class="cat-val" id="r-aro">—</div>
-        </div>
-        <div class="cat-item" style="background:#C5B0D5;color:#2d1a4a;">
-          <div class="cat-label">Polyaromatic</div>
-          <div class="cat-val" id="r-poly">—</div>
-        </div>
-        <div class="cat-item" style="background:#FF8C00;color:#fff;">
-          <div class="cat-label">n-alkane</div>
-          <div class="cat-val" id="r-nalk">—</div>
-        </div>
-        <div class="cat-item" style="background:#FF6600;color:#fff;">
-          <div class="cat-label">iso-alkane</div>
-          <div class="cat-val" id="r-iso">—</div>
-        </div>
-        <div class="cat-item" style="background:#FFD700;color:#3a2a00;">
-          <div class="cat-label">cyclic</div>
-          <div class="cat-val" id="r-cyc">—</div>
-        </div>
-        <div class="cat-item" style="background:#ADD8E6;color:#0a2a3a;">
-          <div class="cat-label">Alkene</div>
-          <div class="cat-val" id="r-alk">—</div>
-        </div>
-        <div class="cat-item" style="background:#FA8072;color:#3a0a0a;">
-          <div class="cat-label">others</div>
-          <div class="cat-val" id="r-oth">—</div>
-        </div>
-        <div class="cat-item" style="background:#e2e8f0;color:#2d3748;">
-          <div class="cat-label">i/n ratio</div>
-          <div class="cat-val" id="r-in">—</div>
-        </div>
-      </div>
-
-      <div id="validation-box" class="validation">—</div>
+      <h2 data-zh="📊 各工作表分類結果" data-en="📊 Results per Sheet">📊 各工作表分類結果</h2>
+      <div id="sheet-overview" class="sheet-overview">—</div>
+      <div id="sheet-cards"></div>
     </div>
 
     <button id="download-btn"
@@ -269,6 +286,99 @@
             data-en="⬇️ Download classified xlsx (with validation report)">
       ⬇️ 下載分類完成的 xlsx（含驗證報告）
     </button>
+  </div>
+
+  <div class="card docs-card">
+    <details class="docs">
+      <summary>
+        <span data-zh="📖 分類規則與使用說明" data-en="📖 Classification Rules &amp; Usage Guide">📖 分類規則與使用說明</span>
+      </summary>
+      <div class="docs-body">
+
+        <div class="docs-lang docs-zh">
+          <h3>分類機制</h3>
+          <p>系統對每個 Peak 依化合物名稱套用規則式分類；規則判斷不出來的（落入 others），會自動查詢 PubChem 分子式做二次判定。</p>
+          <p><strong>七大類別：</strong></p>
+          <ul>
+            <li><b>n-alkane</b>：直鏈烷（如 tetradecane）</li>
+            <li><b>iso-alkane</b>：支鏈烷（如 3-methylpentane）</li>
+            <li><b>cyclic</b>：環烷（如 cyclohexane）；全飽和 decalin 也算此類</li>
+            <li><b>Alkene</b>：烯類（碳碳雙鍵，非芳香）</li>
+            <li><b>Aromatic</b>：單一芳香環（苯、甲苯、二甲苯；以及 tetralin／indane／dihydronaphthalene 等只帶一個芳香環的部分氫化萘/茚類）</li>
+            <li><b>Polyaromatic</b>：≥2 個芳香環（naphthalene、anthracene、phenanthrene、fluorene、biphenyl、azulene 等）</li>
+            <li><b>others</b>：無法辨識，或含氧/氮雜原子的非純烴類（如脂肪醇、酮、酯）</li>
+          </ul>
+          <p><strong>Distribution</strong>（依實測 Ret.Time 分三段，Summary 統計以 C8-16 為主）：</p>
+          <ul>
+            <li>C8-：Ret.Time &lt; 2.178 分鐘</li>
+            <li>C8-16：2.178–17.6 分鐘</li>
+            <li>C16+：Ret.Time &gt; 17.6 分鐘</li>
+          </ul>
+          <p><strong>PubChem 二次判定：</strong>關鍵字判斷不出來的化合物，系統自動查詢 PubChem 取得分子式與 IUPAC 名稱，依碳氫比例（C<sub>n</sub>H<sub>2n-6</sub> 苯環／C<sub>n</sub>H<sub>2n</sub> 烯或環／C<sub>n</sub>H<sub>2n+2</sub> 烷）與雜原子（O/N）二次分類；查詢失敗則維持 others。</p>
+
+          <h3>使用方式</h3>
+          <ol>
+            <li>支援 Shimadzu GCMSsolution 匯出的原始 .xlsx，單一活頁簿可包含多個工作表（分頁）</li>
+            <li>系統會自動掃描「每一個」工作表：只要該工作表含 Peak# 或 Ret.Time 表頭列，就自動分類；不含的工作表視為無關資料，直接略過，不影響其他工作表</li>
+            <li>結果回寫到同一份 xlsx：每個成功分類的工作表各自加上 Category / Distribution 欄、Summary 表格、長條圖、驗證報告</li>
+            <li>檔案大小上限 16MB</li>
+          </ol>
+
+          <h3>常見錯誤與如何避免</h3>
+          <ul>
+            <li><b>檔名沒有影響</b>：分類只看工作表內容，不依賴檔案名稱</li>
+            <li><b>表頭列必須含「Peak#」或「Ret.Time」其中之一</b>：手動改了欄名、合併儲存格、欄名前後多了空白或特殊字元，都會抓不到表頭，該工作表會被判定為「略過」</li>
+            <li><b>Name 欄位不可留空</b>：留空會導致無法辨識化合物名稱，該筆會落入 others</li>
+            <li><b>Conc. 欄位必須是純數字</b>：若含文字或單位符號（如 "5.2%"、"N/A"），會被當成無效值排除在加總外，導致統計失真</li>
+            <li><b>檔案格式必須是 .xlsx</b>：.xls（舊版 Excel）、.csv 不支援</li>
+            <li><b>Category 欄位若已手動填寫</b>：系統只對「空白」的列自動分類，已填寫的值會直接沿用——手動類別名稱要跟七大類別完全一致（含大小寫），拼錯（例如打成 "aromatics" 而非 "Aromatic"）會被當成新的、未預期的類別，Summary 加總會對不起來</li>
+            <li><b>一個工作表只認第一個 Peak Table 表頭</b>：若同一工作表內多次出現「Peak#」字樣，只有第一個會被採用</li>
+          </ul>
+        </div>
+
+        <div class="docs-lang docs-en" style="display:none">
+          <h3>Classification Mechanism</h3>
+          <p>Each peak is classified from its compound name using rule-based keyword matching. Anything the rules can't resolve (falls into "others") is automatically re-checked via a PubChem molecular-formula lookup.</p>
+          <p><strong>Seven categories:</strong></p>
+          <ul>
+            <li><b>n-alkane</b>: straight-chain alkanes (e.g. tetradecane)</li>
+            <li><b>iso-alkane</b>: branched alkanes (e.g. 3-methylpentane)</li>
+            <li><b>cyclic</b>: cycloalkanes (e.g. cyclohexane); fully saturated decalin is also grouped here</li>
+            <li><b>Alkene</b>: C=C double bond, non-aromatic</li>
+            <li><b>Aromatic</b>: single aromatic ring (benzene, toluene, xylene; also tetralin/indane/dihydronaphthalene-type compounds that carry only one aromatic ring)</li>
+            <li><b>Polyaromatic</b>: ≥2 aromatic rings (naphthalene, anthracene, phenanthrene, fluorene, biphenyl, azulene, etc.)</li>
+            <li><b>others</b>: unresolved, or non-hydrocarbon compounds with O/N heteroatoms (fatty alcohols, ketones, esters)</li>
+          </ul>
+          <p><strong>Distribution</strong> (by measured Ret.Time; Summary stats focus on C8-16):</p>
+          <ul>
+            <li>C8-: Ret.Time &lt; 2.178 min</li>
+            <li>C8-16: 2.178–17.6 min</li>
+            <li>C16+: Ret.Time &gt; 17.6 min</li>
+          </ul>
+          <p><strong>PubChem fallback:</strong> for names the keyword rules can't resolve, the app queries PubChem for the molecular formula and IUPAC name, then classifies by C/H ratio (C<sub>n</sub>H<sub>2n-6</sub> = benzene ring / C<sub>n</sub>H<sub>2n</sub> = alkene or ring / C<sub>n</sub>H<sub>2n+2</sub> = alkane) and heteroatom presence (O/N). If the lookup fails, it stays "others".</p>
+
+          <h3>How to Use</h3>
+          <ol>
+            <li>Supports raw .xlsx exports from Shimadzu GCMSsolution. A single workbook may contain multiple sheets (tabs).</li>
+            <li>The app scans every sheet automatically: any sheet with a "Peak#" or "Ret.Time" header row gets classified; sheets without one are treated as unrelated content and skipped, without affecting the others.</li>
+            <li>Results are written back into the same xlsx — each successfully classified sheet gets its own Category/Distribution columns, Summary table, bar chart, and validation report.</li>
+            <li>Max file size: 16MB.</li>
+          </ol>
+
+          <h3>Common Mistakes to Avoid</h3>
+          <ul>
+            <li><b>File name doesn't matter</b> — classification only looks at sheet content.</li>
+            <li><b>The header row must contain "Peak#" or "Ret.Time" exactly</b>: renamed columns, merged header cells, or stray whitespace/special characters will prevent detection — that sheet gets marked "skipped".</li>
+            <li><b>The Name column can't be blank</b>: a blank name can't be resolved and falls into "others".</li>
+            <li><b>The Conc. column must be pure numbers</b>: text or unit symbols (e.g. "5.2%", "N/A") get treated as invalid and excluded from totals, skewing the statistics.</li>
+            <li><b>File must be .xlsx</b>: legacy .xls and .csv are not supported.</li>
+            <li><b>If the Category column is already filled in manually</b>: the app only auto-classifies blank rows — pre-filled values are used as-is. Manual entries must match the seven category names exactly (case-sensitive); a typo (e.g. "aromatics" instead of "Aromatic") is treated as a new, unexpected category and will throw off the Summary totals.</li>
+            <li><b>Only the first Peak Table header per sheet is used</b>: if "Peak#" appears more than once in a sheet, only the first occurrence is read.</li>
+          </ul>
+        </div>
+
+      </div>
+    </details>
   </div>
 
   <script>
@@ -285,6 +395,13 @@
         errorNoFile: '沒有收到檔案',
         errorFormat: '只接受 .xlsx 檔案',
         errorServer: '伺服器錯誤',
+        overview: function(ok, skip, err) {
+          return '共偵測到 ' + (ok + skip + err) + ' 個工作表，成功分類 ' + ok + ' 個' +
+                 (skip > 0 ? '、略過 ' + skip + ' 個' : '') +
+                 (err  > 0 ? '、錯誤 ' + err  + ' 個' : '') + '。';
+        },
+        skipLabel: '略過',
+        errLabel:  '錯誤',
       },
       en: {
         fileSelected: function(name, size) { return '📄 <span><strong>' + name + '</strong> (' + size + ' KB)</span>'; },
@@ -293,8 +410,23 @@
         errorNoFile: 'No file received',
         errorFormat: 'Only .xlsx files are accepted',
         errorServer: 'Server error',
+        overview: function(ok, skip, err) {
+          return 'Detected ' + (ok + skip + err) + ' sheet(s): ' + ok + ' classified' +
+                 (skip > 0 ? ', ' + skip + ' skipped' : '') +
+                 (err  > 0 ? ', ' + err  + ' error(s)' : '') + '.';
+        },
+        skipLabel: 'Skipped',
+        errLabel:  'Error',
       }
     };
+
+    // base64 → UTF-8 字串（跨瀏覽器安全解碼，處理中文等多位元組字元）
+    function b64ToUtf8(b64) {
+      var binary = atob(b64);
+      var bytes  = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new TextDecoder('utf-8').decode(bytes);
+    }
 
     function setLang(lang) {
       currentLang = lang;
@@ -304,6 +436,8 @@
         var val = el.getAttribute('data-' + lang);
         if (val) el.textContent = val;
       });
+      document.querySelectorAll('.docs-zh').forEach(function(el) { el.style.display = (lang === 'zh') ? '' : 'none'; });
+      document.querySelectorAll('.docs-en').forEach(function(el) { el.style.display = (lang === 'en') ? '' : 'none'; });
       document.documentElement.lang = lang === 'zh' ? 'zh-TW' : 'en';
     }
 
@@ -361,6 +495,79 @@
       document.getElementById('error-box').style.display   = 'none';
     };
 
+    var CAT_COLORS = {
+      'Aromatic':     ['#92D050', '#1a3a0a'],
+      'Polyaromatic': ['#C5B0D5', '#2d1a4a'],
+      'n-alkane':     ['#FF8C00', '#fff'],
+      'iso-alkane':   ['#FF6600', '#fff'],
+      'cyclic':       ['#FFD700', '#3a2a00'],
+      'Alkene':       ['#ADD8E6', '#0a2a3a'],
+      'others':       ['#FA8072', '#3a0a0a'],
+    };
+    var CAT_ORDER = ['Aromatic','Polyaromatic','n-alkane','iso-alkane','cyclic','Alkene','others'];
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function(c) {
+        return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+      });
+    }
+
+    // 渲染每個工作表的分類結果卡片（status: 'ok' | 'skipped' | 'error'）
+    function renderSheetReports(reports) {
+      var okCount = 0, skipCount = 0, errCount = 0;
+      var cardsHtml = '';
+
+      reports.forEach(function(r) {
+        if (r.status === 'ok') {
+          okCount++;
+          var sums = r.sums_816 || {};
+          var nVal = sums['n-alkane'] || 0;
+          var isoVal = sums['iso-alkane'] || 0;
+          var inRatio = nVal > 0 ? (isoVal / nVal).toFixed(2) : '0.00';
+
+          var catHtml = CAT_ORDER.map(function(cat) {
+            var colors = CAT_COLORS[cat];
+            var val = (sums[cat] !== undefined) ? sums[cat].toFixed(2) + '%' : '—';
+            return '<div class="cat-item" style="background:' + colors[0] + ';color:' + colors[1] + ';">' +
+                     '<div class="cat-label">' + cat + '</div>' +
+                     '<div class="cat-val">' + val + '</div>' +
+                   '</div>';
+          }).join('') +
+          '<div class="cat-item" style="background:#e2e8f0;color:#2d3748;">' +
+            '<div class="cat-label">i/n ratio</div>' +
+            '<div class="cat-val">' + inRatio + '</div>' +
+          '</div>';
+
+          var validationHtml = r.passed
+            ? '<div class="validation pass">' + i18n[currentLang].validationPass(r.error, r.auto_classified) + '</div>'
+            : '<div class="validation fail">' + i18n[currentLang].validationFail(r.error) + '</div>';
+
+          cardsHtml +=
+            '<div class="sheet-card">' +
+              '<div class="sheet-card-title">📄 ' + escapeHtml(r.sheet) + '</div>' +
+              '<div class="report-grid">' +
+                '<div class="report-item"><div class="label">C8-</div><div class="value">' + r.c8minus.toFixed(2) + '%</div></div>' +
+                '<div class="report-item highlight"><div class="label">C8-16</div><div class="value">' + r.c816_total.toFixed(2) + '%</div></div>' +
+                '<div class="report-item"><div class="label">C16+</div><div class="value">' + r.c16plus.toFixed(2) + '%</div></div>' +
+              '</div>' +
+              '<div class="category-grid">' + catHtml + '</div>' +
+              validationHtml +
+            '</div>';
+        } else if (r.status === 'skipped') {
+          skipCount++;
+          cardsHtml += '<div class="sheet-notice skip">⚠️ <span class="sheet-name">' + escapeHtml(r.sheet) +
+                       '</span>：' + escapeHtml(r.reason) + '</div>';
+        } else {
+          errCount++;
+          cardsHtml += '<div class="sheet-notice error">❌ <span class="sheet-name">' + escapeHtml(r.sheet) +
+                       '</span>：' + escapeHtml(r.reason) + '</div>';
+        }
+      });
+
+      document.getElementById('sheet-overview').textContent = i18n[currentLang].overview(okCount, skipCount, errCount);
+      document.getElementById('sheet-cards').innerHTML = cardsHtml;
+    }
+
     window.processFile = function() {
       if (!selectedFile) return;
 
@@ -378,51 +585,13 @@
           if (!res.ok) {
             return res.json().then(function(err) { throw new Error(err.error || i18n[currentLang].errorServer); });
           }
-          // Read headers
-          var c8m   = res.headers.get('X-C8minus')   || '—';
-          var c816  = res.headers.get('X-C816total')  || '—';
-          var c16p  = res.headers.get('X-C16plus')    || '—';
-          var grand = res.headers.get('X-GrandTotal') || '—';
-          var pass  = res.headers.get('X-Passed')     || 'False';
-          var auto  = res.headers.get('X-AutoClass')  || '0';
-          var aro   = res.headers.get('X-Aromatic')     || '—';
-          var poly  = res.headers.get('X-Polyaromatic') || '—';
-          var nalk  = res.headers.get('X-Nalkane')      || '—';
-          var iso   = res.headers.get('X-Isoalkane')    || '—';
-          var cyc   = res.headers.get('X-Cyclic')       || '—';
-          var alk   = res.headers.get('X-Alkene')       || '—';
-          var oth   = res.headers.get('X-Others')       || '—';
-          var inr   = res.headers.get('X-InRatio')      || '—';
 
-          document.getElementById('r-c8m').textContent  = c8m  + '%';
-          document.getElementById('r-c816').textContent = c816 + '%';
-          document.getElementById('r-c16p').textContent = c16p + '%';
-          document.getElementById('r-aro').textContent  = aro  !== '—' ? aro  + '%' : '—';
-          document.getElementById('r-poly').textContent = poly !== '—' ? poly + '%' : '—';
-          document.getElementById('r-nalk').textContent = nalk !== '—' ? nalk + '%' : '—';
-          document.getElementById('r-iso').textContent  = iso  !== '—' ? iso  + '%' : '—';
-          document.getElementById('r-cyc').textContent  = cyc  !== '—' ? cyc  + '%' : '—';
-          document.getElementById('r-alk').textContent  = alk  !== '—' ? alk  + '%' : '—';
-          document.getElementById('r-oth').textContent  = oth  !== '—' ? oth  + '%' : '—';
-          document.getElementById('r-in').textContent   = inr;
-          document.getElementById('r-aro').textContent  = aro  !== '—' ? aro  + '%' : '—';
-          document.getElementById('r-poly').textContent = poly !== '—' ? poly + '%' : '—';
-          document.getElementById('r-nalk').textContent = nalk !== '—' ? nalk + '%' : '—';
-          document.getElementById('r-iso').textContent  = iso  !== '—' ? iso  + '%' : '—';
-          document.getElementById('r-cyc').textContent  = cyc  !== '—' ? cyc  + '%' : '—';
-          document.getElementById('r-alk').textContent  = alk  !== '—' ? alk  + '%' : '—';
-          document.getElementById('r-oth').textContent  = oth  !== '—' ? oth  + '%' : '—';
-          document.getElementById('r-in').textContent   = inr;
+          var raw = res.headers.get('X-Sheet-Reports');
+          var sheetReports = [];
+          try { sheetReports = raw ? JSON.parse(b64ToUtf8(raw)) : []; }
+          catch (e) { sheetReports = []; }
 
-          var vbox = document.getElementById('validation-box');
-          var err  = Math.abs(parseFloat(grand) - 100).toFixed(4);
-          if (pass === 'True') {
-            vbox.textContent = i18n[currentLang].validationPass(err, auto);
-            vbox.className = 'validation pass';
-          } else {
-            vbox.textContent = i18n[currentLang].validationFail(err);
-            vbox.className = 'validation fail';
-          }
+          renderSheetReports(sheetReports);
 
           document.getElementById('report').style.display = 'block';
           document.getElementById('progress').style.display = 'none';
