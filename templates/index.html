@@ -67,6 +67,36 @@
     #drop-zone p { color: #718096; font-size: 0.95rem; }
     #drop-zone strong { color: #2d3748; }
     #file-input { display: none; }
+
+    /* 分析設定面板 */
+    .settings { margin-top: 18px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
+    .settings > summary {
+      cursor: pointer; padding: 12px 16px; font-weight: 600; color: #2d3748;
+      list-style: none; font-size: 14px;
+    }
+    .settings > summary::-webkit-details-marker { display: none; }
+    .settings > summary::before { content: '⚙️ '; }
+    .settings-body { padding: 4px 16px 16px; }
+    .setting-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .setting-row label { font-size: 13px; color: #4a5568; min-width: 150px; }
+    .setting-row select, .setting-row input {
+      padding: 6px 10px; border: 1px solid #cbd5e0; border-radius: 6px;
+      font-size: 13px; font-family: inherit; background: #fff;
+    }
+    .setting-row input[type=text], .setting-row input[type=number] { width: 110px; }
+    .setting-hint { font-size: 12px; color: #718096; line-height: 1.6; margin: 0 0 12px; }
+
+    /* 圖庫比對警示 */
+    .lib-warn {
+      margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+      background: #fffaf0; border: 1px solid #f6ad55; color: #7b341e; font-size: 13px;
+    }
+    .lib-warn table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+    .lib-warn th, .lib-warn td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #fbd38d; }
+    .solvent-note {
+      margin-top: 10px; padding: 8px 12px; border-radius: 8px;
+      background: #edf2f7; color: #2d3748; font-size: 13px;
+    }
     #file-info {
       display: none;
       margin-top: 16px;
@@ -263,6 +293,48 @@
 
     <div id="file-info"></div>
 
+    <details class="settings">
+      <summary data-zh="分析設定（溶劑扣除／碳數視窗）"
+               data-en="Analysis settings (solvent cut / carbon window)">分析設定（溶劑扣除／碳數視窗）</summary>
+      <div class="settings-body">
+
+        <p class="setting-hint"
+           data-zh="樣品用溶劑稀釋進樣時，溶劑峰不是產物，必須整筆排除；扣除後其餘峰會正規化回 100%。"
+           data-en="When the sample is diluted for injection, the solvent peak is not a product and must be excluded; the remaining peaks are renormalized to 100%.">
+          樣品用溶劑稀釋進樣時，溶劑峰不是產物，必須整筆排除；扣除後其餘峰會正規化回 100%。
+        </p>
+
+        <div class="setting-row">
+          <label data-zh="溶劑扣除" data-en="Solvent cut">溶劑扣除</label>
+          <select id="solvent-mode" onchange="onSolventModeChange()">
+            <option value="auto"   data-zh="自動偵測（建議）" data-en="Auto-detect (recommended)">自動偵測（建議）</option>
+            <option value="manual" data-zh="手動指定峰號"     data-en="Specify peak numbers">手動指定峰號</option>
+            <option value="off"    data-zh="不扣除"           data-en="Do not exclude">不扣除</option>
+          </select>
+          <input type="text" id="solvent-peaks" placeholder="1,2" style="display:none;">
+        </div>
+
+        <div class="setting-row" id="solvent-thresh-row">
+          <label data-zh="溶劑峰濃度門檻 %" data-en="Solvent conc. threshold %">溶劑峰濃度門檻 %</label>
+          <input type="number" id="solvent-min-conc" step="0.1" min="0" value="2.0">
+        </div>
+
+        <p class="setting-hint"
+           data-zh="碳數視窗以 n-alkane 標記峰的滯留時間為界；隨管柱與溫度程式改變，可依實際圖譜調整。"
+           data-en="Carbon windows are bounded by n-alkane marker retention times; adjust to match your column and oven program.">
+          碳數視窗以 n-alkane 標記峰的滯留時間為界；隨管柱與溫度程式改變，可依實際圖譜調整。
+        </p>
+
+        <div class="setting-row">
+          <label data-zh="C8 起點 RT (min)" data-en="C8 start RT (min)">C8 起點 RT (min)</label>
+          <input type="number" id="rt-c8-min" step="0.001" value="2.178">
+          <label data-zh="C16 終點 RT (min)" data-en="C16 end RT (min)">C16 終點 RT (min)</label>
+          <input type="number" id="rt-c16-max" step="0.001" value="17.6">
+        </div>
+
+      </div>
+    </details>
+
     <button id="process-btn"
             data-zh="開始分類"
             data-en="Start Classification"
@@ -311,12 +383,38 @@
           <p>規則以<b>化學字根</b>比對，涵蓋衍生物寫法（NAPHTHALENYL、INDEN-1-ONE、PHENANTHRENOL 等），
              直鏈烷／烯涵蓋 C1–C50（含 HENEICOSANE、DOTRIACONTANE、TRITETRACONTANE 這類長鏈），
              bicyclo／tricyclo／spiro 的環狀多烯歸 Alkene。</p>
-          <p><strong>Distribution</strong>（依實測 Ret.Time 分三段，Summary 統計以 C8-16 為主）：</p>
+          <p><strong>判定順序（先到先贏，順序本身就是分類慣例）：</strong></p>
+          <ol>
+            <li>含雜原子官能基（O／N／S／Si／鹵素）→ <b>others</b></li>
+            <li>部分氫化的萘／茚（只剩 1 個芳香環）→ <b>Aromatic</b></li>
+            <li>多環芳烴（≥2 芳香環）→ <b>Polyaromatic</b></li>
+            <li>單環芳烴 → <b>Aromatic</b></li>
+            <li>飽和環烷 → <b>cyclic</b></li>
+            <li>烯 → <b>Alkene</b></li>
+            <li>烷 → 名稱含任何烷基取代基字根（METHYL／PROPYL／OCTYL…）即 <b>iso-alkane</b>，否則 <b>n-alkane</b></li>
+          </ol>
+          <p>第 1 條排在芳香環之前是刻意的：烴類分類體系（PIONA）的 aromatic 指「芳香<b>烴</b>」，
+             含氧的芳香化合物（phenyl ether、phenyl ketone、phenol、phthalate）屬含氧物，一律歸 others。
+             苯環＋環烷的 naphtheno-aromatic 則依慣例算 aromatic（第 4 條排在第 5 條之前）。</p>
+
+          <p><strong>溶劑扣除：</strong>樣品稀釋用的溶劑不是產物。溶劑峰在層析圖最前端、面積極大，
+             而且因為嚴重過載被積分成好幾個峰、NIST 比對品質很差（常回報成同分異構物）。
+             自動偵測從第一個峰連續往後掃，抓「RT 早於 C8 邊界且單峰 Conc% ≥ 門檻」的一段，
+             遇到第一個不符合的峰就停手；也可以直接手動指定峰號。扣除後其餘峰正規化回 100%。</p>
+
+          <p><strong>Distribution</strong>（依實測 Ret.Time 分三段，邊界可在「分析設定」調整）：</p>
           <ul>
-            <li>C8-：Ret.Time &lt; 2.178 分鐘</li>
-            <li>C8-16：2.178–17.6 分鐘</li>
-            <li>C16+：Ret.Time &gt; 17.6 分鐘</li>
+            <li>C8-：Ret.Time &lt; C8 起點（預設 2.178 分鐘）</li>
+            <li>C8-16：C8 起點–C16 終點（預設 2.178–17.6 分鐘）</li>
+            <li>C16+：Ret.Time &gt; C16 終點（預設 17.6 分鐘）</li>
           </ul>
+          <p>邊界應該對齊該次分析 n-alkane 標記峰的實際滯留時間，會隨管柱與溫度程式改變。
+             驗證報告輸出「類別 × 碳數視窗」矩陣，C8- 與 C16+ 也有完整組成，不再只有總量。</p>
+
+          <p><strong>圖庫比對稽核：</strong>分類完全建立在 NIST 比對出來的名稱上，名稱錯了分類一定跟著錯。
+             系統用 C8／C16 兩個標記峰線性內插推算每個峰「應該」是幾個碳，與名稱碳數相差 ≥3 個碳就列入警示清單。
+             只對脂肪族（烷／烯／環烷）做這項檢查——這條線是拿 n-alkane 校正的，
+             芳香烴的滯留指數系統性偏高，套同一條線會整批誤報。</p>
           <p><strong>PubChem 二次判定：</strong>關鍵字判斷不出來的化合物，系統自動查詢 PubChem 取得分子式與 IUPAC 名稱，依碳氫比例（C<sub>n</sub>H<sub>2n-6</sub> 苯環／C<sub>n</sub>H<sub>2n</sub> 烯或環／C<sub>n</sub>H<sub>2n+2</sub> 烷）與雜原子（O/N）二次分類；查詢失敗則維持 others。</p>
 
           <h3>使用方式</h3>
@@ -371,9 +469,9 @@
              are classed as Alkene.</p>
           <p><strong>Distribution</strong> (by measured Ret.Time; Summary stats focus on C8-16):</p>
           <ul>
-            <li>C8-: Ret.Time &lt; 2.178 min</li>
-            <li>C8-16: 2.178–17.6 min</li>
-            <li>C16+: Ret.Time &gt; 17.6 min</li>
+            <li>C8-: Ret.Time &lt; C8 start (default 2.178 min)</li>
+            <li>C8-16: C8 start – C16 end (default 2.178–17.6 min)</li>
+            <li>C16+: Ret.Time &gt; C16 end (default 17.6 min)</li>
           </ul>
           <p><strong>PubChem fallback:</strong> for names the keyword rules can't resolve, the app queries PubChem for the molecular formula and IUPAC name, then classifies by C/H ratio (C<sub>n</sub>H<sub>2n-6</sub> = benzene ring / C<sub>n</sub>H<sub>2n</sub> = alkene or ring / C<sub>n</sub>H<sub>2n+2</sub> = alkane) and heteroatom presence (O/N). If the lookup fails, it stays "others".</p>
 
@@ -443,6 +541,15 @@
         },
         skipLabel: '略過',
         errLabel:  '錯誤',
+        solventNote: function(total, peaks) {
+          return '🧪 已扣除溶劑峰 ' + peaks + '，合計 ' + total.toFixed(2) +
+                 '%；以下數值為扣除後正規化到 100% 的結果。';
+        },
+        solventNone: '🧪 未偵測到溶劑峰，數值為原始濃度。',
+        libWarn: function(n, conc) {
+          return '⚠️ 有 ' + n + ' 個峰（合計 ' + conc.toFixed(2) +
+                 '%）的名稱碳數與滯留位置對不上，圖庫比對可能有誤，建議人工確認：';
+        },
       },
       en: {
         fileSelected: function(name, size) { return '📄 <span><strong>' + name + '</strong> (' + size + ' KB)</span>'; },
@@ -465,6 +572,16 @@
         },
         skipLabel: 'Skipped',
         errLabel:  'Error',
+        solventNote: function(total, peaks) {
+          return '🧪 Solvent peaks ' + peaks + ' excluded (' + total.toFixed(2) +
+                 '% total); values below are renormalized to 100% on a solvent-free basis.';
+        },
+        solventNone: '🧪 No solvent peak detected; values are raw concentrations.',
+        libWarn: function(n, conc) {
+          return '⚠️ ' + n + ' peak(s) (' + conc.toFixed(2) +
+                 '% total) have a name carbon number inconsistent with their retention time — ' +
+                 'the library match is likely wrong. Please verify manually:';
+        },
       }
     };
 
@@ -488,6 +605,12 @@
       document.querySelectorAll('.docs-en').forEach(function(el) { el.style.display = (lang === 'en') ? '' : 'none'; });
       document.documentElement.lang = lang === 'zh' ? 'zh-TW' : 'en';
     }
+
+    window.onSolventModeChange = function() {
+      var mode = document.getElementById('solvent-mode').value;
+      document.getElementById('solvent-peaks').style.display      = (mode === 'manual') ? '' : 'none';
+      document.getElementById('solvent-thresh-row').style.display = (mode === 'auto')   ? '' : 'none';
+    };
 
     function showError(msg) {
       var box = document.getElementById('error-box');
@@ -576,7 +699,10 @@
           var sums = r.sums_816 || {};
           var nVal = sums['n-alkane'] || 0;
           var isoVal = sums['iso-alkane'] || 0;
-          var inRatio = nVal > 0 ? (isoVal / nVal).toFixed(2) : '0.00';
+          // n-alkane 為 0 時 i/n 未定義，後端回 null，顯示 — 而不是 0.00
+          var inRatio = (r.i_n_ratio === null) ? '—'
+            : (r.i_n_ratio !== undefined) ? r.i_n_ratio.toFixed(2)
+            : (nVal > 0 ? (isoVal / nVal).toFixed(2) : '—');
 
           var catHtml = CAT_ORDER.map(function(cat) {
             var colors = CAT_COLORS[cat];
@@ -591,6 +717,32 @@
             '<div class="cat-val">' + inRatio + '</div>' +
           '</div>';
 
+          var solventHtml = '';
+          if (r.solvent_total > 0) {
+            var pkList = (r.solvent_peaks || []).map(function(p) { return '#' + p.peak; }).join(', ');
+            solventHtml = '<div class="solvent-note">' +
+              escapeHtml(i18n[currentLang].solventNote(r.solvent_total, pkList || '—')) + '</div>';
+          } else if (r.solvent_total === 0) {
+            solventHtml = '<div class="solvent-note">' +
+              escapeHtml(i18n[currentLang].solventNone) + '</div>';
+          }
+
+          var libWarnHtml = '';
+          if (r.carbon_flag_count > 0) {
+            var rows = (r.carbon_flags || []).map(function(f) {
+              return '<tr><td>#' + f.peak + '</td><td>' + f.rt + '</td><td>' +
+                     f.conc + '%</td><td>C' + f.named_c + '</td><td>C' + f.rt_c +
+                     '</td><td>' + escapeHtml(f.name) + '</td></tr>';
+            }).join('');
+            libWarnHtml = '<div class="lib-warn">' +
+              escapeHtml(i18n[currentLang].libWarn(r.carbon_flag_count, r.carbon_flag_conc)) +
+              (rows ? '<table><tr><th>Peak</th><th>RT</th><th>Conc.</th><th>' +
+                      (currentLang === 'zh' ? '名稱碳數' : 'C from name') + '</th><th>' +
+                      (currentLang === 'zh' ? 'RT 推碳數' : 'C from RT') + '</th><th>Name</th></tr>' +
+                      rows + '</table>' : '') +
+              '</div>';
+          }
+
           var validationHtml = r.passed
             ? '<div class="validation pass">' + i18n[currentLang].validationPass(r.error, r.auto_classified) + '</div>'
             : '<div class="validation fail">' + i18n[currentLang].validationFail(r.error) + '</div>';
@@ -604,6 +756,8 @@
                 '<div class="report-item"><div class="label">C16+</div><div class="value">' + r.c16plus.toFixed(2) + '%</div></div>' +
               '</div>' +
               '<div class="category-grid">' + catHtml + '</div>' +
+              solventHtml +
+              libWarnHtml +
               validationHtml +
             '</div>';
         } else if (r.status === 'skipped') {
@@ -637,6 +791,11 @@
 
       var formData = new FormData();
       formData.append('file', selectedFile);
+      formData.append('solvent_mode',     document.getElementById('solvent-mode').value);
+      formData.append('solvent_peaks',    document.getElementById('solvent-peaks').value);
+      formData.append('solvent_min_conc', document.getElementById('solvent-min-conc').value);
+      formData.append('rt_c8_min',        document.getElementById('rt-c8-min').value);
+      formData.append('rt_c16_max',       document.getElementById('rt-c16-max').value);
 
       fetch('/classify', { method: 'POST', body: formData })
         .then(function(res) {
