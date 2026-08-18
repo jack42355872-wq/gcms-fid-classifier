@@ -89,10 +89,13 @@
     /* 圖庫比對警示 */
     .lib-warn {
       margin-top: 12px; padding: 10px 12px; border-radius: 8px;
-      background: #fffaf0; border: 1px solid #f6ad55; color: #7b341e; font-size: 13px;
+      background: #f7fafc; border: 1px solid #cbd5e0; color: #2d3748; font-size: 13px;
     }
-    .lib-warn table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
-    .lib-warn th, .lib-warn td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #fbd38d; }
+    .lib-warn-title { font-weight: 600; margin-bottom: 4px; }
+    .lib-warn-desc { margin: 0 0 8px; font-size: 12.5px; color: #4a5568; line-height: 1.6; }
+    .lib-warn table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12px; }
+    .lib-warn th, .lib-warn td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #e2e8f0; }
+    .lib-warn-hint { margin: 8px 0 0; font-size: 11.5px; color: #718096; }
     .solvent-note {
       margin-top: 10px; padding: 8px 12px; border-radius: 8px;
       background: #edf2f7; color: #2d3748; font-size: 13px;
@@ -411,10 +414,16 @@
           <p>邊界應該對齊該次分析 n-alkane 標記峰的實際滯留時間，會隨管柱與溫度程式改變。
              驗證報告輸出「類別 × 碳數視窗」矩陣，C8- 與 C16+ 也有完整組成，不再只有總量。</p>
 
-          <p><strong>圖庫比對稽核：</strong>分類完全建立在 NIST 比對出來的名稱上，名稱錯了分類一定跟著錯。
-             系統用 C8／C16 兩個標記峰線性內插推算每個峰「應該」是幾個碳，與名稱碳數相差 ≥3 個碳就列入警示清單。
+          <p><strong>圖書館比對參考（不影響分類）：</strong>這是一個獨立的稽核功能，跟分類邏輯與加總驗證完全分開——
+             不會回頭改任何一筆分類結果，純粹是額外資訊。</p>
+          <p>做法：系統用 C8／C16 兩個標記峰的滯留時間線性內插，算出「這個滯留位置照理說該是幾個碳」，
+             跟「化合物名稱本身寫的碳數」做比對，差 ≥3 個碳就列進參考清單，提示這個峰的
+             NIST 圖書館比對可能認錯了化合物身分，值得你人工核對名稱是否合理。
              只對脂肪族（烷／烯／環烷）做這項檢查——這條線是拿 n-alkane 校正的，
-             芳香烴的滯留指數系統性偏高，套同一條線會整批誤報。</p>
+             芳香烴的滯留指數系統性偏高，套同一條線會整批誤報，所以不檢查。</p>
+          <p><b>分類（Category）本身，仍然只依照化合物名稱套用關鍵字規則判定，
+             跟這個碳數比對沒有關係；「加總驗證通過」檢查的是濃度總和對不對得起來，也是另一件事。</b>
+             三者是三個獨立的檢查，只是剛好都出現在同一份結果裡。</p>
           <p><strong>PubChem 二次判定：</strong>關鍵字判斷不出來的化合物，系統自動查詢 PubChem 取得分子式與 IUPAC 名稱，依碳氫比例（C<sub>n</sub>H<sub>2n-6</sub> 苯環／C<sub>n</sub>H<sub>2n</sub> 烯或環／C<sub>n</sub>H<sub>2n+2</sub> 烷）與雜原子（O/N）二次分類；查詢失敗則維持 others。</p>
 
           <h3>使用方式</h3>
@@ -467,12 +476,34 @@
              PHENANTHRENOL…) are covered. Straight-chain alkanes/alkenes span C1–C50 (including long chains
              such as HENEICOSANE, DOTRIACONTANE, TRITETRACONTANE); bicyclo/tricyclo/spiro cyclic polyenes
              are classed as Alkene.</p>
-          <p><strong>Distribution</strong> (by measured Ret.Time; Summary stats focus on C8-16):</p>
+          <p><strong>Solvent exclusion:</strong> the dilution solvent is not a product. Auto-detect scans
+             contiguously from the front of the chromatogram for peaks eluting before the C8 boundary at or
+             above a concentration threshold, and stops at the first peak that doesn't qualify. Excluded peaks
+             are removed from both numerator and denominator, and the rest is renormalized to 100%. Can also
+             be set to a manual peak list or turned off in "Analysis settings".</p>
+          <p><strong>Distribution</strong> (by measured Ret.Time; boundaries adjustable in "Analysis settings"):</p>
           <ul>
             <li>C8-: Ret.Time &lt; C8 start (default 2.178 min)</li>
             <li>C8-16: C8 start – C16 end (default 2.178–17.6 min)</li>
             <li>C16+: Ret.Time &gt; C16 end (default 17.6 min)</li>
           </ul>
+          <p>Boundaries should track the actual retention time of the n-alkane marker peaks for that run,
+             since they shift with the column and oven program. The validation report includes a
+             category x carbon-window matrix, so C8- and C16+ also get a full composition, not just a total.</p>
+
+          <p><strong>Library-match reference (does not affect classification):</strong> this is a separate,
+             informational-only check — it never changes any category, and it is independent of the sum
+             validation. It interpolates, from the C8/C16 marker retention times, what carbon number a peak
+             "should" have at that elution time, and compares it to the carbon count implied by the compound
+             name. A mismatch of ≥3 carbons is listed as a reference item, flagging peaks where the NIST library
+             match is likely wrong and worth checking by hand. Restricted to aliphatics (alkane/alkene/cyclic) —
+             this line is calibrated on n-alkanes, and aromatics elute systematically later on the same scale,
+             so applying it there would flag them in bulk incorrectly.</p>
+          <p><b>To be explicit: classification is decided purely by keyword rules on the compound name and
+             has nothing to do with this carbon check; "sum validation passed" is a separate check on whether
+             concentrations add up correctly. All three are independent checks that happen to appear in the
+             same report.</b></p>
+
           <p><strong>PubChem fallback:</strong> for names the keyword rules can't resolve, the app queries PubChem for the molecular formula and IUPAC name, then classifies by C/H ratio (C<sub>n</sub>H<sub>2n-6</sub> = benzene ring / C<sub>n</sub>H<sub>2n</sub> = alkene or ring / C<sub>n</sub>H<sub>2n+2</sub> = alkane) and heteroatom presence (O/N). If the lookup fails, it stays "others".</p>
 
           <h3>How to Use</h3>
@@ -546,10 +577,12 @@
                  '%；以下數值為扣除後正規化到 100% 的結果。';
         },
         solventNone: '🧪 未偵測到溶劑峰，數值為原始濃度。',
-        libWarn: function(n, conc) {
-          return '⚠️ 有 ' + n + ' 個峰（合計 ' + conc.toFixed(2) +
-                 '%）的名稱碳數與滯留位置對不上，圖庫比對可能有誤，建議人工確認：';
+        libWarnTitle: function(n, conc) {
+          return '🔎 圖書館比對參考（' + n + ' 個峰、合計 ' + conc.toFixed(2) + '%）';
         },
+        libWarnBody: '這幾個峰的「名稱碳數」跟「滯留時間推算出的碳數」對不上，代表 NIST 圖書館可能認錯了化合物身分。' +
+                     '<b>這只是提醒你哪些峰的名字值得人工核對，不會改變分類結果，也不影響左邊的加總驗證。</b>',
+        libWarnColHint: '「名稱碳數」=從化合物名稱數出來的碳數；「RT 推碳數」=用 C8／C16 標記峰內插算出這個滯留時間該有幾個碳。',
       },
       en: {
         fileSelected: function(name, size) { return '📄 <span><strong>' + name + '</strong> (' + size + ' KB)</span>'; },
@@ -577,11 +610,13 @@
                  '% total); values below are renormalized to 100% on a solvent-free basis.';
         },
         solventNone: '🧪 No solvent peak detected; values are raw concentrations.',
-        libWarn: function(n, conc) {
-          return '⚠️ ' + n + ' peak(s) (' + conc.toFixed(2) +
-                 '% total) have a name carbon number inconsistent with their retention time — ' +
-                 'the library match is likely wrong. Please verify manually:';
+        libWarnTitle: function(n, conc) {
+          return '🔎 Library-match reference (' + n + ' peak(s), ' + conc.toFixed(2) + '% total)';
         },
+        libWarnBody: 'These peaks\' name-implied carbon count disagrees with the carbon count interpolated from ' +
+                     'retention time, suggesting the NIST library may have matched the wrong compound. ' +
+                     '<b>This is informational only — it does not change the classification and does not affect the sum validation on the left.</b>',
+        libWarnColHint: '"C from name" = carbon count read off the compound name; "C from RT" = carbon count interpolated from the C8/C16 marker peaks at this retention time.',
       }
     };
 
@@ -735,11 +770,13 @@
                      '</td><td>' + escapeHtml(f.name) + '</td></tr>';
             }).join('');
             libWarnHtml = '<div class="lib-warn">' +
-              escapeHtml(i18n[currentLang].libWarn(r.carbon_flag_count, r.carbon_flag_conc)) +
+              '<div class="lib-warn-title">' + escapeHtml(i18n[currentLang].libWarnTitle(r.carbon_flag_count, r.carbon_flag_conc)) + '</div>' +
+              '<p class="lib-warn-desc">' + i18n[currentLang].libWarnBody + '</p>' +
               (rows ? '<table><tr><th>Peak</th><th>RT</th><th>Conc.</th><th>' +
                       (currentLang === 'zh' ? '名稱碳數' : 'C from name') + '</th><th>' +
                       (currentLang === 'zh' ? 'RT 推碳數' : 'C from RT') + '</th><th>Name</th></tr>' +
                       rows + '</table>' : '') +
+              '<p class="lib-warn-hint">' + escapeHtml(i18n[currentLang].libWarnColHint) + '</p>' +
               '</div>';
           }
 
