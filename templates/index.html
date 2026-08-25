@@ -85,6 +85,33 @@
     }
     .setting-row input[type=text], .setting-row input[type=number] { width: 110px; }
     .setting-hint { font-size: 12px; color: #718096; line-height: 1.6; margin: 0 0 12px; }
+    .setting-sep { border: 0; border-top: 1px dashed #cbd5e0; margin: 18px 0 14px; }
+    .setting-row-block { display: block; }
+    .setting-row-block label { display: block; margin-bottom: 6px; }
+    .setting-row-block textarea {
+      width: 100%; box-sizing: border-box; padding: 8px 10px;
+      border: 1px solid #cbd5e0; border-radius: 6px; background: #fff;
+      font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      line-height: 1.6; resize: vertical;
+    }
+
+    /* n-alkane RT 標定結果 */
+    .nalk-box {
+      margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+      background: #f0f7ff; border: 1px solid #b6d4f5; color: #2d3748; font-size: 13px;
+    }
+    .nalk-box.off { background: #f7fafc; border-color: #cbd5e0; }
+    .nalk-title { font-weight: 600; margin-bottom: 4px; }
+    .nalk-desc { margin: 0 0 8px; font-size: 12.5px; color: #4a5568; line-height: 1.6; }
+    .nalk-box table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12px; }
+    .nalk-box th, .nalk-box td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #dbe7f5; }
+    .nalk-anchor-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .nalk-chip {
+      padding: 3px 8px; border-radius: 999px; font-size: 11.5px;
+      background: #dbeafe; color: #1e3a5f; border: 1px solid #b6d4f5; white-space: nowrap;
+    }
+    .nalk-chip.warn { background: #fff3cd; border-color: #f0c674; color: #6b4c00; font-weight: 600; }
+    .nalk-hint { margin: 8px 0 0; font-size: 11.5px; color: #718096; }
 
     /* 圖庫比對警示 */
     .lib-warn {
@@ -163,13 +190,18 @@
     .report-item .value { font-size: 1.2rem; font-weight: 700; color: #2d3748; }
     .report-item.highlight { background: #ebf8ff; }
     .report-item.highlight .value { color: #2b6cb0; }
+    /* minmax(0,1fr) 而不是 1fr：1fr 的下限是 min-content，"Polyaromatic"
+       這種長單字會把欄位撐開，在窄螢幕上直接讓整頁橫向溢出。 */
     .category-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 16px;
     }
-    .cat-item { border-radius: 6px; padding: 8px; text-align: center; font-size: 0.8rem; }
+    .cat-item {
+      border-radius: 6px; padding: 8px; text-align: center; font-size: 0.8rem;
+      min-width: 0; overflow-wrap: anywhere;
+    }
     .cat-item .cat-label { font-size: 0.7rem; opacity: 0.8; }
     .cat-item .cat-val { font-weight: 700; font-size: 1rem; }
     .validation { padding: 10px 16px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; }
@@ -265,6 +297,33 @@
     .docs-body p { margin: 6px 0; }
     .docs-body ul, .docs-body ol { margin: 6px 0 6px 22px; }
     .docs-body li { margin: 4px 0; }
+    .docs-body code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.86em; background: #edf2f7; border-radius: 4px;
+      padding: 1px 5px; color: #1a365d; word-break: break-all;
+    }
+    .rule-chain {
+      background: #ebf8ff; border-left: 3px solid #3182ce; border-radius: 0 6px 6px 0;
+      padding: 8px 12px; font-weight: 600; color: #1a365d; letter-spacing: 0.02em;
+    }
+    .docs-update {
+      background: #fffbeb; border-left: 3px solid #f0c674; border-radius: 0 6px 6px 0;
+      padding: 8px 12px; margin: 10px 0; font-size: 0.88rem; color: #4a3a10;
+    }
+    .ruler-table { border-collapse: collapse; margin: 8px 0; font-size: 0.82rem; }
+    .ruler-table th, .ruler-table td {
+      border: 1px solid #cbd5e0; padding: 4px 9px; text-align: center;
+    }
+    .ruler-table th { background: #ebf8ff; color: #1a365d; }
+    .docs-body .ruler-wrap { overflow-x: auto; }
+
+    @media (max-width: 480px) {
+      body { padding: 24px 12px; }
+      .card { padding: 24px 18px; }
+      .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .report-grid { gap: 8px; }
+      .setting-row label { min-width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -335,6 +394,35 @@
           <input type="number" id="rt-c16-max" step="0.001" value="17.6">
         </div>
 
+        <hr class="setting-sep">
+
+        <p class="setting-hint"
+           data-zh="直鏈烷（n-alkane）每個碳數只會出現在一個固定的滯留時間。NIST 對長鏈飽和烷的質譜幾乎分不出直鏈與支鏈，常把 iso-alkane 回報成「DODECANE」這種直鏈名 —— 只信名稱會讓 n-alkane 灌水、i/n 被低估。下面這張標尺就是用來把它們擋掉。"
+           data-en="Each n-alkane carbon number elutes at one fixed retention time. NIST can barely separate straight- from branched-chain saturated alkanes by mass spectrum, so iso-alkanes are often reported under a straight-chain name like &quot;DODECANE&quot; — trusting the name alone inflates n-alkane and understates i/n. This ruler filters them out.">
+          直鏈烷（n-alkane）每個碳數只會出現在一個固定的滯留時間。NIST 對長鏈飽和烷的質譜幾乎分不出直鏈與支鏈，常把 iso-alkane 回報成「DODECANE」這種直鏈名 —— 只信名稱會讓 n-alkane 灌水、i/n 被低估。下面這張標尺就是用來把它們擋掉。
+        </p>
+
+        <div class="setting-row">
+          <label data-zh="n-alkane RT 校驗" data-en="n-alkane RT check">n-alkane RT 校驗</label>
+          <select id="nalkane-rt-mode" onchange="onNalkaneModeChange()">
+            <option value="strict" data-zh="開啟（建議）：標尺外一律 iso-alkane" data-en="On (recommended): off-ruler → iso-alkane">開啟（建議）：標尺外一律 iso-alkane</option>
+            <option value="range"  data-zh="只在標尺碳數範圍內校驗"           data-en="Only within the ruler's carbon range">只在標尺碳數範圍內校驗</option>
+            <option value="off"    data-zh="關閉（只看名稱）"                 data-en="Off (name only)">關閉（只看名稱）</option>
+          </select>
+          <label data-zh="容差 ±(min)" data-en="Tolerance ±(min)">容差 ±(min)</label>
+          <input type="number" id="nalkane-rt-cap" step="0.05" min="0.05" value="1.5">
+        </div>
+
+        <div class="setting-row setting-row-block" id="nalkane-ruler-row">
+          <label data-zh="n-alkane 標準品 RT 標尺" data-en="n-alkane RT ruler">n-alkane 標準品 RT 標尺</label>
+          <textarea id="nalkane-rt-ruler" rows="3" spellcheck="false">C8 2.2, C9 3.6, C10 6.4, C11 8.9, C12 10.9, C13 12.5, C14 14.2, C15 16.0, C16 17.6, C17 19.2, C18 20.7</textarea>
+        </div>
+        <p class="setting-hint"
+           data-zh="格式「C碳數 滯留時間」，用逗號或換行分隔。預設是 Octane–Octadecane 標準品實測表；換管柱或溫度程式就要換成你自己那次分析的實測值。要讓 C7 或 C19 以上也能判成 n-alkane，就把它們的實測 RT 加進來。"
+           data-en="Format &quot;C&lt;carbons&gt; &lt;RT&gt;&quot;, comma- or newline-separated. The default is the Octane–Octadecane standard table; swap in your own measured values when the column or oven program changes. To let C7 or C19+ be called n-alkane, add their measured RTs here.">
+          格式「C碳數 滯留時間」，用逗號或換行分隔。預設是 Octane–Octadecane 標準品實測表；換管柱或溫度程式就要換成你自己那次分析的實測值。要讓 C7 或 C19 以上也能判成 n-alkane，就把它們的實測 RT 加進來。
+        </p>
+
       </div>
     </details>
 
@@ -375,10 +463,10 @@
           <p>系統對每個 Peak 依化合物名稱套用規則式分類；規則判斷不出來的（落入 others），會自動查詢 PubChem 分子式做二次判定。</p>
           <p><strong>七大類別：</strong></p>
           <ul>
-            <li><b>n-alkane</b>：直鏈烷（如 tetradecane）</li>
-            <li><b>iso-alkane</b>：支鏈烷（如 3-methylpentane）</li>
-            <li><b>cyclic</b>：環烷（如 cyclohexane）；全飽和 decalin 也算此類</li>
-            <li><b>Alkene</b>：烯類（碳碳雙鍵，非芳香）</li>
+            <li><b>n-alkane</b>：直鏈烷（如 tetradecane）。<b>名稱是直鏈烷還不夠，滯留時間也要落在該碳數的標尺上</b>，見下方「n-alkane RT 校驗」</li>
+            <li><b>iso-alkane</b>：支鏈烷（如 3-methylpentane），以及名稱雖是直鏈烷、但滯留時間對不上標尺的峰</li>
+            <li><b>cyclic</b>：<b>全飽和</b>的環烷（如 cyclohexane、decalin）。<b>環上只要有一個 C=C 就不算 cyclic，歸 Alkene</b></li>
+            <li><b>Alkene</b>：碳碳雙鍵、非芳香。<b>包含環烯</b>（cyclohexene、cycloheptatriene、bicyclo/spiro 的環狀多烯）</li>
             <li><b>Aromatic</b>：單一芳香環（苯、甲苯、二甲苯；以及 tetralin／indane／dihydronaphthalene 等只帶一個芳香環的部分氫化萘/茚類）</li>
             <li><b>Polyaromatic</b>：≥2 個芳香環（naphthalene、anthracene、phenanthrene、fluorene、biphenyl、azulene 等）</li>
             <li><b>others</b>：含氧/氮/硫/矽/鹵素等雜原子的非烴類（脂肪醇、醛、酮、酸、酯、醚、胺、氯代烷、furan 等雜環）。烴類分類體系中沒有對應類別，others 即為正解，並非「判不出來」</li>
@@ -387,23 +475,66 @@
              直鏈烷／烯涵蓋 C1–C50（含 HENEICOSANE、DOTRIACONTANE、TRITETRACONTANE 這類長鏈），
              bicyclo／tricyclo／spiro 的環狀多烯歸 Alkene。</p>
           <p><strong>判定順序（先到先贏，順序本身就是分類慣例）：</strong></p>
+          <p class="rule-chain">含氧／雜原子 → 芳香環 → 不飽和 → 環 → 烷</p>
           <ol>
-            <li>含雜原子官能基（O／N／S／Si／鹵素）→ <b>others</b></li>
+            <li>含氧／雜原子官能基（O／N／S／Si／鹵素）→ <b>others</b></li>
             <li>部分氫化的萘／茚（只剩 1 個芳香環）→ <b>Aromatic</b></li>
             <li>多環芳烴（≥2 芳香環）→ <b>Polyaromatic</b></li>
             <li>單環芳烴 → <b>Aromatic</b></li>
-            <li>飽和環烷 → <b>cyclic</b></li>
-            <li>烯 → <b>Alkene</b></li>
-            <li>烷 → 名稱含任何烷基取代基字根（METHYL／PROPYL／OCTYL…）即 <b>iso-alkane</b>，否則 <b>n-alkane</b></li>
+            <li>不飽和（C=C，<b>含環烯</b>）→ <b>Alkene</b></li>
+            <li>飽和環烷（只有單鍵才算）→ <b>cyclic</b></li>
+            <li>烷 → 名稱含任何烷基取代基字根（METHYL／PROPYL／OCTYL…）即 <b>iso-alkane</b>，否則進入 n-alkane RT 校驗</li>
           </ol>
           <p>第 1 條排在芳香環之前是刻意的：烴類分類體系（PIONA）的 aromatic 指「芳香<b>烴</b>」，
-             含氧的芳香化合物（phenyl ether、phenyl ketone、phenol、phthalate）屬含氧物，一律歸 others。
-             苯環＋環烷的 naphtheno-aromatic 則依慣例算 aromatic（第 4 條排在第 5 條之前）。</p>
+             含氧的芳香化合物（phenyl ether、phenyl ketone、phenol、phthalate、phenanthrenol）屬含氧物，一律歸 others。
+             苯環＋環烷的 naphtheno-aromatic 則依慣例算 aromatic（第 4 條排在環烷之前）。</p>
+          <p class="docs-update"><b>2026-08-26 更新：不飽和（第 5 條）已提到環烷（第 6 條）之前。</b>
+             cyclic 的定義是「只有飽和單鍵的環」，所以環烯類要歸 <b>Alkene</b> 而不是 cyclic：
+             <code>CYCLOPENTENE, 4,4-DIMETHYL-</code>、<code>Cyclohexene, 1-methyl-</code>、
+             <code>7-BUTYL-1,3,5-CYCLOHEPTATRIENE</code>、<code>6,6-DIMETHYL-2-VINYL-BICYCLO[3.1.1]HEPT-2-ENE</code>
+             全部算 Alkene。舊順序在這幾筆上碰巧判對（因為 "CYCLOPENTENE" 不含字串 "PENTANE"），
+             但碰到 <code>CYCLOHEXANE, ETHENYL-</code>（乙烯基環己烷）這種寫法就會判成 cyclic —— 現在不會了。</p>
+          <p class="docs-update">同批修正的還有三類「含氧物被漏判」：
+             <code>Octadecane, 1-(ethenyloxy)-</code>（乙烯醚，舊版判 n-alkane）、
+             <code>…DECA-5,7-DIEN-1-ONE</code>（酮，舊版判 Alkene）、
+             <code>BICYCLO[3.1.1]HEPTAN-3-OL, …</code>（CAS 倒裝寫法的醇，舊版判不出來）。
+             現在醇與酮改用「數字-OL／數字-ONE」的字尾規則辨識，醚類則直接吃 OXY／OXA 字根。</p>
+
+          <h3>n-alkane RT 校驗（會改變分類結果）</h3>
+          <p>直鏈烷每個碳數在同一套 GC 方法下只會出現在<b>一個</b>固定的滯留時間。
+             但 NIST 對長鏈飽和烷的質譜幾乎分不出直鏈與支鏈（碎片圖譜近乎相同），
+             常常把一根 iso-alkane 回報成 <code>DODECANE</code>、<code>Pentadecane</code> 這種直鏈名。
+             只信名稱的話，n-alkane 會被灌水、i/n 會被低估。</p>
+          <p><strong>判準：</strong>名稱是「沒有取代基的直鏈烷」時，去標尺上找它碳數對應的 RT。
+             同一個碳數若有好幾根候選峰，<b>只有離標尺最近的那一根算 n-alkane</b>，
+             其餘一律改判 <b>iso-alkane</b>（同碳數的其他飽和異構物）。
+             離標尺超過容差（預設 ±1.5 分鐘）的，同樣改判 iso-alkane。</p>
+          <p><strong>預設標尺</strong>（Octane–Octadecane 標準品實測，單位：分鐘）：</p>
+          <div class="ruler-wrap"><table class="ruler-table">
+            <tr><th>C8</th><th>C9</th><th>C10</th><th>C11</th><th>C12</th><th>C13</th><th>C14</th><th>C15</th><th>C16</th><th>C17</th><th>C18</th></tr>
+            <tr><td>2.2</td><td>3.6</td><td>6.4</td><td>8.9</td><td>10.9</td><td>12.5</td><td>14.2</td><td>16.0</td><td>17.6</td><td>19.2</td><td>20.7</td></tr>
+          </table></div>
+          <p>標尺跟著管柱與溫度程式走，<b>換方法就要換數字</b>，可在「分析設定」直接改。
+             三種模式：<b>開啟</b>（預設，標尺沒有的碳數一律 iso-alkane）、
+             <b>只在標尺碳數範圍內校驗</b>（C8–C18 之外沿用名稱判定）、<b>關閉</b>（只看名稱，等同舊版行為）。</p>
+          <p class="docs-update"><b>備註：預設標尺只到 C18。</b>在「開啟」模式下，C19 以上（Nonadecane、Eicosane、
+             Heneicosane…）與 C7 以下（Heptane）因為標尺上沒有對應值，一律被歸成 iso-alkane。
+             這些峰通常落在 C16+／C8- 視窗、不影響 C8–16 的主要統計，但如果你要看重質段的鏈長選擇性，
+             請把那些碳數的實測 RT 補進標尺，或改用「只在標尺碳數範圍內校驗」模式。</p>
+          <p class="docs-update">結果面板會列出每個碳數「對到哪一根峰、與標尺差多少」。
+             同一次分析的偏移應該<b>平滑變化</b>；某個碳數的偏移突然跳掉（超過 0.6 分鐘會標黃）
+             通常代表那根峰被圖庫認錯了 —— NIST 幾乎分不出直鏈 C18 與 C19，
+             實測就遇過「RT 落在 C18 位置的峰被叫成 NONADECANE」。程式不會自作主張改名，但一定會把它標出來。</p>
 
           <p><strong>溶劑扣除：</strong>樣品稀釋用的溶劑不是產物。溶劑峰在層析圖最前端、面積極大，
              而且因為嚴重過載被積分成好幾個峰、NIST 比對品質很差（常回報成同分異構物）。
-             自動偵測從第一個峰連續往後掃，抓「RT 早於 C8 邊界且單峰 Conc% ≥ 門檻」的一段，
-             遇到第一個不符合的峰就停手；也可以直接手動指定峰號。扣除後其餘峰正規化回 100%。</p>
+             自動偵測從第一個峰連續往後掃，抓「RT 早於 C8 邊界」<b>且</b>「單峰 Conc% ≥ 門檻
+             <b>或</b> 名稱正好是己烷／其 C6H14 同分異構物」的一段，遇到第一個不符合的峰就停手；
+             也可以直接手動指定峰號。扣除後其餘峰正規化回 100%。</p>
+          <p class="docs-update"><b>2026-08-26 更新：</b>溶劑判定加上「名稱正好是己烷」這個條件。
+             原本只看濃度門檻，樣品濃度高的時候溶劑峰可能只佔 0.9%、低於門檻而完全沒被扣掉，
+             整份濃度分母就會與手動分帳對不起來。名稱比對用<b>完整相等</b>而非包含
+             （<code>Hexane, 3-ethyl-4-methyl-</code> 是 C9 產物，不會被誤扣）。</p>
 
           <p><strong>Distribution</strong>（依實測 Ret.Time 分三段，邊界可在「分析設定」調整）：</p>
           <ul>
@@ -444,12 +575,20 @@
             <li><b>Category 欄位若已手動填寫</b>：系統只對「空白」的列自動分類，已填寫的值會直接沿用——手動類別名稱要跟七大類別完全一致（含大小寫），拼錯（例如打成 "aromatics" 而非 "Aromatic"）會被當成新的、未預期的類別，Summary 加總會對不起來</li>
             <li><b>一個工作表只認第一個 Peak Table 表頭</b>：若同一工作表內多次出現「Peak#」字樣，只有第一個會被採用</li>
             <li><b>可直接上傳 GCMSsolution 原始匯出檔</b>：系統只讀取 MC Peak Table 範圍（Peak# 為數字的連續列），後面的 [MS Similarity Search Results]、[MS Spectrum] 等區塊會自動忽略，不必先手動刪掉</li>
-            <li><b>Peak# 欄位必須是連續的數字</b>：Peak Table 中間若插入空白列或文字列，系統會判定表格在該處結束，後面的 peak 不會被分類</li>
+            <li><b>Peak# 欄位必須是連續的數字</b>：Peak Table 中間若插入空白列或文字列，系統會判定表格在該處結束，後面的 peak 不會被分類。
+                <b>例外</b>：手動把某幾列的 Peak# 改寫成「C8」「C16」這種 n-alkane 標記（人工分帳檔的常見做法）不會中斷表格，系統看得懂</li>
           </ul>
           <p style="margin-top:10px;color:#718096;font-size:0.86rem;">
             備註：規則判不出來的化合物仍會自動查詢 PubChem 分子式做二次判定（含失敗重試）。
             此路徑對 R1／R2 實測為 0 筆——規則已能涵蓋全部化合物，因此結果不依賴網路、可完整重現；
             PubChem 保留作為遇到全新化合物時的安全網。
+          </p>
+          <p style="margin-top:6px;color:#718096;font-size:0.86rem;">
+            <b>2026-08-26 回歸驗證：</b>以 R5（SAPO-11）與 R10 兩份人工分類分帳檔當 ground truth，
+            共 220 個有人工判定的峰，程式判定<b>零筆不符</b>，且完全不需要 PubChem 查詢。
+            R10 的七類佔比與 i/n 也與人工「最終版」逐格一致
+            （n-alkane 22.66／iso-alkane 18.66／alkene 17.30／cyclic 2.13／aromatics 10.64／others 22.91、i/n 0.82）。
+            動過分類規則或 RT 標尺就要重跑這組回歸。
           </p>
           <p style="margin-top:6px;color:#718096;font-size:0.86rem;">
             規則可靠度：已將 R1＋R2 全部 247 個化合物逐一送 PubChem 取真實分子式交叉比對，
@@ -464,10 +603,10 @@
           <p>Each peak is classified from its compound name using rule-based keyword matching. Anything the rules can't resolve (falls into "others") is automatically re-checked via a PubChem molecular-formula lookup.</p>
           <p><strong>Seven categories:</strong></p>
           <ul>
-            <li><b>n-alkane</b>: straight-chain alkanes (e.g. tetradecane)</li>
-            <li><b>iso-alkane</b>: branched alkanes (e.g. 3-methylpentane)</li>
-            <li><b>cyclic</b>: cycloalkanes (e.g. cyclohexane); fully saturated decalin is also grouped here</li>
-            <li><b>Alkene</b>: C=C double bond, non-aromatic</li>
+            <li><b>n-alkane</b>: straight-chain alkanes (e.g. tetradecane). <b>A straight-chain name is not enough — the retention time must also land on that carbon number's ruler entry</b>; see "n-alkane RT check" below</li>
+            <li><b>iso-alkane</b>: branched alkanes (e.g. 3-methylpentane), plus any peak carrying a straight-chain name whose retention time does not match the ruler</li>
+            <li><b>cyclic</b>: <b>fully saturated</b> rings (cyclohexane, decalin). <b>A single C=C on the ring disqualifies it — that goes to Alkene</b></li>
+            <li><b>Alkene</b>: C=C double bond, non-aromatic. <b>Includes cycloalkenes</b> (cyclohexene, cycloheptatriene, bicyclo/spiro cyclic polyenes)</li>
             <li><b>Aromatic</b>: single aromatic ring (benzene, toluene, xylene; also tetralin/indane/dihydronaphthalene-type compounds that carry only one aromatic ring)</li>
             <li><b>Polyaromatic</b>: ≥2 aromatic rings (naphthalene, anthracene, phenanthrene, fluorene, biphenyl, azulene, etc.)</li>
             <li><b>others</b>: non-hydrocarbons carrying O/N/S/Si/halogen heteroatoms (fatty alcohols, aldehydes, ketones, acids, esters, ethers, amines, chloroalkanes, furan-type heterocycles). A hydrocarbon-type scheme has no class for these, so "others" is the correct answer, not a failure to classify.</li>
@@ -476,11 +615,78 @@
              PHENANTHRENOL…) are covered. Straight-chain alkanes/alkenes span C1–C50 (including long chains
              such as HENEICOSANE, DOTRIACONTANE, TRITETRACONTANE); bicyclo/tricyclo/spiro cyclic polyenes
              are classed as Alkene.</p>
+          <p><strong>Decision order (first match wins — the order itself is the classification convention):</strong></p>
+          <p class="rule-chain">oxygenate / heteroatom &rarr; aromatic ring &rarr; unsaturation &rarr; ring &rarr; alkane</p>
+          <ol>
+            <li>Oxygen/heteroatom functional group (O/N/S/Si/halogen) &rarr; <b>others</b></li>
+            <li>Partially hydrogenated naphthalene/indene (only 1 aromatic ring left) &rarr; <b>Aromatic</b></li>
+            <li>Polycyclic aromatics (&ge;2 aromatic rings) &rarr; <b>Polyaromatic</b></li>
+            <li>Single-ring aromatics &rarr; <b>Aromatic</b></li>
+            <li>Unsaturation (C=C, <b>including cycloalkenes</b>) &rarr; <b>Alkene</b></li>
+            <li>Saturated rings (single bonds only) &rarr; <b>cyclic</b></li>
+            <li>Alkanes &rarr; any alkyl-substituent stem in the name (METHYL/PROPYL/OCTYL&hellip;) means <b>iso-alkane</b>; otherwise it goes through the n-alkane RT check</li>
+          </ol>
+          <p>Rule 1 sits ahead of the aromatic rules deliberately: in a PIONA-style scheme "aromatic" means
+             aromatic <b>hydrocarbon</b>, so oxygenated aromatics (phenyl ether, phenyl ketone, phenol,
+             phthalate, phenanthrenol) are oxygenates &rarr; others. Naphtheno-aromatics (benzene ring fused to a
+             cycloalkane) count as aromatic by convention, which is why rule 4 precedes the ring rule.</p>
+          <p class="docs-update"><b>Updated 2026-08-26: unsaturation (rule 5) now precedes rings (rule 6).</b>
+             "cyclic" means a ring with saturated single bonds only, so cycloalkenes belong in <b>Alkene</b>:
+             <code>CYCLOPENTENE, 4,4-DIMETHYL-</code>, <code>Cyclohexene, 1-methyl-</code>,
+             <code>7-BUTYL-1,3,5-CYCLOHEPTATRIENE</code> and
+             <code>6,6-DIMETHYL-2-VINYL-BICYCLO[3.1.1]HEPT-2-ENE</code> are all Alkene. The old order happened
+             to get these right (because "CYCLOPENTENE" does not contain the string "PENTANE") but would have
+             mis-classified spellings like <code>CYCLOHEXANE, ETHENYL-</code> — it no longer does.</p>
+          <p class="docs-update">Three classes of missed oxygenates were fixed in the same pass:
+             <code>Octadecane, 1-(ethenyloxy)-</code> (vinyl ether, previously n-alkane),
+             <code>&hellip;DECA-5,7-DIEN-1-ONE</code> (ketone, previously Alkene) and
+             <code>BICYCLO[3.1.1]HEPTAN-3-OL, &hellip;</code> (CAS-inverted alcohol, previously unresolved).
+             Alcohols and ketones are now matched on the "&lt;locant&gt;-OL / &lt;locant&gt;-ONE" suffix pattern,
+             and ethers on the OXY/OXA stem.</p>
+
+          <h3>n-alkane RT check (this one does change the classification)</h3>
+          <p>Under one GC method, each n-alkane carbon number elutes at exactly <b>one</b> retention time.
+             But NIST can barely separate straight- from branched-chain saturated alkanes by mass spectrum
+             (their fragmentation patterns are nearly identical), so iso-alkanes are frequently reported under
+             names like <code>DODECANE</code> or <code>Pentadecane</code>. Trusting the name alone inflates
+             n-alkane and understates i/n.</p>
+          <p><strong>Rule:</strong> when a name is an <b>unsubstituted straight-chain alkane</b>, look up the
+             ruler entry for its carbon number. If several peaks compete for one carbon number,
+             <b>only the one closest to the ruler stays n-alkane</b>; the rest are reclassified as
+             <b>iso-alkane</b> (other saturated isomers of the same carbon number). Anything beyond the
+             tolerance (default &plusmn;1.5 min) is likewise reclassified as iso-alkane.</p>
+          <p><strong>Default ruler</strong> (Octane&ndash;Octadecane standards, minutes):</p>
+          <div class="ruler-wrap"><table class="ruler-table">
+            <tr><th>C8</th><th>C9</th><th>C10</th><th>C11</th><th>C12</th><th>C13</th><th>C14</th><th>C15</th><th>C16</th><th>C17</th><th>C18</th></tr>
+            <tr><td>2.2</td><td>3.6</td><td>6.4</td><td>8.9</td><td>10.9</td><td>12.5</td><td>14.2</td><td>16.0</td><td>17.6</td><td>19.2</td><td>20.7</td></tr>
+          </table></div>
+          <p>The ruler tracks the column and oven program, so <b>swap in your own numbers when the method
+             changes</b> — it is editable under "Analysis settings". Three modes: <b>on</b> (default; carbon
+             numbers absent from the ruler become iso-alkane), <b>ruler range only</b> (outside C8&ndash;C18 the name
+             is trusted as before), and <b>off</b> (name only — the previous behaviour).</p>
+          <p class="docs-update"><b>Note: the default ruler stops at C18.</b> In "on" mode, C19 and above
+             (Nonadecane, Eicosane, Heneicosane&hellip;) and C7 and below (Heptane) have no ruler entry and are
+             therefore classed as iso-alkane. Those peaks normally sit in the C16+ / C8- windows and do not
+             affect the main C8&ndash;16 statistics, but if you care about chain-length selectivity in the heavy
+             fraction, add their measured retention times to the ruler or switch to "ruler range only".</p>
+          <p class="docs-update">The results panel lists which peak each carbon number matched and how far it
+             sits from the ruler. Deviation should <b>drift smoothly</b> across a run; a single carbon number
+             jumping out (highlighted above 0.6 min) usually means that peak was mis-identified by the library
+             — NIST can barely separate straight-chain C18 from C19, and a real run showed a peak sitting
+             exactly at the C18 position being reported as NONADECANE. The tool never renames a peak on its
+             own, but it always flags this.</p>
+
           <p><strong>Solvent exclusion:</strong> the dilution solvent is not a product. Auto-detect scans
-             contiguously from the front of the chromatogram for peaks eluting before the C8 boundary at or
-             above a concentration threshold, and stops at the first peak that doesn't qualify. Excluded peaks
+             contiguously from the front of the chromatogram for peaks eluting before the C8 boundary that are
+             either at or above a concentration threshold <b>or</b> named exactly as hexane / one of its
+             C6H14 isomers, and stops at the first peak that doesn't qualify. Excluded peaks
              are removed from both numerator and denominator, and the rest is renormalized to 100%. Can also
              be set to a manual peak list or turned off in "Analysis settings".</p>
+          <p class="docs-update"><b>Updated 2026-08-26:</b> the "named exactly as hexane" condition is new.
+             With only a concentration threshold, a concentrated sample can leave the solvent peak at ~0.9%
+             — below the threshold, so it was never excluded and the concentration denominator disagreed
+             with the manual reconciliation. Name matching is on <b>exact equality</b>, not substring, so
+             <code>Hexane, 3-ethyl-4-methyl-</code> (a C9 product) is never excluded.</p>
           <p><strong>Distribution</strong> (by measured Ret.Time; boundaries adjustable in "Analysis settings"):</p>
           <ul>
             <li>C8-: Ret.Time &lt; C8 start (default 2.178 min)</li>
@@ -583,6 +789,27 @@
         libWarnBody: '這幾個峰的「名稱碳數」跟「滯留時間推算出的碳數」對不上，代表 NIST 圖書館可能認錯了化合物身分。' +
                      '<b>這只是提醒你哪些峰的名字值得人工核對，不會改變分類結果，也不影響左邊的加總驗證。</b>',
         libWarnColHint: '「名稱碳數」=從化合物名稱數出來的碳數；「RT 推碳數」=用 C8／C16 標記峰內插算出這個滯留時間該有幾個碳。',
+        nalkTitle: function(n, conc) {
+          return '📏 n-alkane RT 校驗：' + n + ' 個峰改判 iso-alkane（合計 ' + conc.toFixed(2) + '%）';
+        },
+        nalkTitleClean: '📏 n-alkane RT 校驗：全部通過，沒有峰被改判',
+        nalkOff: '📏 n-alkane RT 校驗已關閉 —— 只要名稱是直鏈烷就算 n-alkane，NIST 認錯的支鏈烷會被算進去。',
+        nalkDesc: '名稱是直鏈烷、但滯留時間對不上該碳數標尺的峰，一律改判 <b>iso-alkane</b>（同碳數的其他飽和異構物）。' +
+                  '同一個碳數若有好幾根候選峰，只有離標尺最近的那一根算 n-alkane。<b>這一步會改變分類結果與 i/n。</b>',
+        nalkAnchorsLabel: '對到的 n-alkane 標記峰（Cn ＝ 實測 RT，括號內為與標尺的差）：',
+        nalkReason: function(d) {
+          if (d.why === 'no_ruler')  return '標尺上沒有 C' + d.c + ' 的滯留時間';
+          if (d.why === 'too_far')   return '離 C' + d.c + ' 標尺（' + d.ref + '）'
+                                            + Math.abs(d.d || 0).toFixed(2) + ' 分鐘，超過容差 '
+                                            + Number(d.cap).toFixed(2) + ' 分鐘';
+          if (d.why === 'taken')     return 'C' + d.c + ' 已由 RT ' + Number(d.by).toFixed(3)
+                                            + ' 那根峰佔用（離標尺 ' + d.ref + ' 更近）';
+          return d.why || '';
+        },
+        nalkWarnHint: function(t) {
+          return '⚠️ 黃色標記代表偏移超過 ' + t + ' 分鐘。同一次分析的偏移應該平滑變化，' +
+                 '某個碳數突然跳掉通常代表那根峰的圖庫比對認錯了（NIST 幾乎分不出 C18/C19 直鏈），或標尺本身要換成這次分析的實測值。';
+        },
       },
       en: {
         fileSelected: function(name, size) { return '📄 <span><strong>' + name + '</strong> (' + size + ' KB)</span>'; },
@@ -617,6 +844,29 @@
                      'retention time, suggesting the NIST library may have matched the wrong compound. ' +
                      '<b>This is informational only — it does not change the classification and does not affect the sum validation on the left.</b>',
         libWarnColHint: '"C from name" = carbon count read off the compound name; "C from RT" = carbon count interpolated from the C8/C16 marker peaks at this retention time.',
+        nalkTitle: function(n, conc) {
+          return '📏 n-alkane RT check: ' + n + ' peak(s) reclassified as iso-alkane (' + conc.toFixed(2) + '% total)';
+        },
+        nalkTitleClean: '📏 n-alkane RT check: all clear, no peak reclassified',
+        nalkOff: '📏 n-alkane RT check is off — any straight-chain name counts as n-alkane, including branched alkanes the NIST library mis-identified.',
+        nalkDesc: 'Peaks carrying a straight-chain alkane name whose retention time does not land on that carbon number\'s ruler entry are reclassified as <b>iso-alkane</b> ' +
+                  '(another saturated isomer of the same carbon number). When several peaks compete for one carbon number, only the closest to the ruler stays n-alkane. ' +
+                  '<b>This step does change the classification and the i/n ratio.</b>',
+        nalkAnchorsLabel: 'Matched n-alkane marker peaks (Cn = measured RT, deviation from ruler in brackets):',
+        nalkReason: function(d) {
+          if (d.why === 'no_ruler')  return 'no C' + d.c + ' entry on the ruler';
+          if (d.why === 'too_far')   return Math.abs(d.d || 0).toFixed(2) + ' min from the C' + d.c
+                                            + ' ruler entry (' + d.ref + '), beyond the '
+                                            + Number(d.cap).toFixed(2) + ' min tolerance';
+          if (d.why === 'taken')     return 'C' + d.c + ' already claimed by the peak at RT '
+                                            + Number(d.by).toFixed(3) + ' (closer to ruler ' + d.ref + ')';
+          return d.why || '';
+        },
+        nalkWarnHint: function(t) {
+          return '⚠️ Highlighted entries deviate by more than ' + t + ' min. Deviation should drift smoothly across a run; ' +
+                 'a single carbon number jumping out usually means that peak was mis-identified by the library ' +
+                 '(NIST can barely separate straight-chain C18 from C19), or the ruler needs to be replaced with values measured on this run.';
+        },
       }
     };
 
@@ -640,6 +890,13 @@
       document.querySelectorAll('.docs-en').forEach(function(el) { el.style.display = (lang === 'en') ? '' : 'none'; });
       document.documentElement.lang = lang === 'zh' ? 'zh-TW' : 'en';
     }
+
+    // 關閉 RT 校驗時，標尺與容差就沒有意義，直接收起來避免誤會
+    window.onNalkaneModeChange = function() {
+      var off = document.getElementById('nalkane-rt-mode').value === 'off';
+      document.getElementById('nalkane-ruler-row').style.display = off ? 'none' : '';
+      document.getElementById('nalkane-rt-cap').disabled = off;
+    };
 
     window.onSolventModeChange = function() {
       var mode = document.getElementById('solvent-mode').value;
@@ -762,6 +1019,49 @@
               escapeHtml(i18n[currentLang].solventNone) + '</div>';
           }
 
+          // n-alkane RT 校驗結果。這一段跟下面的「圖書館比對參考」不同：
+          // 它是真的改過分類的，所以放在驗證區塊上面、用藍框而不是灰框。
+          var nalkHtml = '';
+          if (r.nalkane_rt_mode === 'off') {
+            nalkHtml = '<div class="nalk-box off">' + escapeHtml(i18n[currentLang].nalkOff) + '</div>';
+          } else if (r.nalkane_rt_mode) {
+            var anchors = r.nalkane_anchors || [];
+            var anyWarn = false;
+            var chips = anchors.map(function(a) {
+              if (a.w) anyWarn = true;
+              var dv = (a.d >= 0 ? '+' : '') + a.d.toFixed(2);
+              return '<span class="nalk-chip' + (a.w ? ' warn' : '') + '">C' + a.c +
+                     ' = ' + a.rt.toFixed(3) + ' (' + dv + ')</span>';
+            }).join('');
+
+            var demoted = r.nalkane_demoted || [];
+            var demRows = demoted.map(function(d) {
+              return '<tr><td>#' + escapeHtml(d.pk) + '</td><td>' + d.rt + '</td><td>' +
+                     d.conc.toFixed(2) + '%</td><td>' + escapeHtml(d.nm) + '</td><td>' +
+                     escapeHtml(i18n[currentLang].nalkReason(d)) + '</td></tr>';
+            }).join('');
+            var more = (r.nalkane_demoted_count || 0) - demoted.length;
+
+            nalkHtml = '<div class="nalk-box">' +
+              '<div class="nalk-title">' + escapeHtml(
+                  r.nalkane_demoted_count > 0
+                    ? i18n[currentLang].nalkTitle(r.nalkane_demoted_count, r.nalkane_demoted_conc)
+                    : i18n[currentLang].nalkTitleClean) + '</div>' +
+              '<p class="nalk-desc">' + i18n[currentLang].nalkDesc + '</p>' +
+              (chips ? '<div class="nalk-hint">' + escapeHtml(i18n[currentLang].nalkAnchorsLabel) + '</div>' +
+                       '<div class="nalk-anchor-chips">' + chips + '</div>' : '') +
+              (demRows ? '<table><tr><th>Peak</th><th>RT</th><th>Conc.</th><th>Name</th><th>' +
+                         (currentLang === 'zh' ? '改判原因' : 'Reason') + '</th></tr>' + demRows + '</table>' +
+                         (more > 0 ? '<p class="nalk-hint">… ' + more +
+                           (currentLang === 'zh' ? ' 筆未列出，完整清單見下載的 xlsx 驗證報告。'
+                                                 : ' more not shown — see the validation report in the downloaded xlsx.') +
+                           '</p>' : '')
+                       : '') +
+              (anyWarn ? '<p class="nalk-hint">' + escapeHtml(
+                          i18n[currentLang].nalkWarnHint(r.nalkane_rt_warn)) + '</p>' : '') +
+              '</div>';
+          }
+
           var libWarnHtml = '';
           if (r.carbon_flag_count > 0) {
             var rows = (r.carbon_flags || []).map(function(f) {
@@ -794,6 +1094,7 @@
               '</div>' +
               '<div class="category-grid">' + catHtml + '</div>' +
               solventHtml +
+              nalkHtml +
               libWarnHtml +
               validationHtml +
             '</div>';
@@ -833,6 +1134,9 @@
       formData.append('solvent_min_conc', document.getElementById('solvent-min-conc').value);
       formData.append('rt_c8_min',        document.getElementById('rt-c8-min').value);
       formData.append('rt_c16_max',       document.getElementById('rt-c16-max').value);
+      formData.append('nalkane_rt_mode',  document.getElementById('nalkane-rt-mode').value);
+      formData.append('nalkane_rt_ruler', document.getElementById('nalkane-rt-ruler').value);
+      formData.append('nalkane_rt_cap',   document.getElementById('nalkane-rt-cap').value);
 
       fetch('/classify', { method: 'POST', body: formData })
         .then(function(res) {
