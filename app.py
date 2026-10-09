@@ -6,9 +6,11 @@ GC-MS FID 成分分類網站
 import io
 import os
 import re
+import gc
 import json
 import time
 import base64
+import ctypes
 import pandas as pd
 from flask import Flask, request, send_file, render_template, jsonify
 from werkzeug.exceptions import HTTPException
@@ -863,6 +865,26 @@ def _find_table_end(df_raw, header_row_idx):
     return end
 
 
+def _insert_rows_sparse(ws, idx, amount):
+    """
+    等同 ws.insert_rows(idx, amount)，但只搬「已存在」的儲存格。
+
+    openpyxl 的 insert_rows 會先對整個長方形範圍呼叫 iter_rows，把每一個空格也
+    new 成 Cell 物件（Peak Table 在 6768 列 x 31 欄的工作表裡只有約 2.5 萬格有值，
+    卻會建 21 萬個 Cell ≈ 60MB / 工作表）。多工作表上傳時，這是撐爆 Render 免費方案
+    512MB 的主因（8 工作表峰值 826MB）。空格沒有值也沒有樣式，搬不搬都不影響輸出。
+    用到 openpyxl 私有欄位 _cells / _move_cell，requirements.txt 已鎖 openpyxl==3.1.5。
+    """
+    if not (hasattr(ws, '_cells') and hasattr(ws, '_move_cell')):
+        ws.insert_rows(idx, amount=amount)   # openpyxl 內部改版時退回官方實作
+        return
+    # 由下往上搬，避免新位置蓋到尚未搬動的格子
+    for row, column in sorted((k for k in ws._cells if k[0] >= idx),
+                              key=lambda k: k[0], reverse=True):
+        ws._move_cell(row, column, amount, 0)
+    ws._current_row = ws.max_row
+
+
 def _process_single_sheet(df_raw, header_row_idx, ws, budget=None, opts=None):
     """
     對單一工作表執行：清理 → 分類 → 統計 → 寫回 Excel（上色、Summary、圖表、驗證報告）。
@@ -1038,19 +1060,19 @@ def _process_single_sheet(df_raw, header_row_idx, ws, budget=None, opts=None):
     carbon_flag_conc = round(sum(f['conc'] for f in carbon_flags) * factor, 2)
 
     # Step 5: 確認是否已有 Summary 表格（ws 由呼叫端傳入，屬於已載入的工作簿）
+    # 直接查 df_raw，不要用 ws.iter_rows()：openpyxl 的 iter_rows 會替整個長方形範圍
+    # 每一格都 new 一個 Cell 物件（6768 列 x 31 欄 ≈ 21 萬個、約 60MB / 工作表），
+    # 而全新檔案根本沒有 'C8-'，每次都會掃完整張表。多工作表上傳就是這樣把 512MB 吃光。
+    # df_raw 的列號 + 1 = Excel 列號（與下方 peak_header_excel_row 的換算一致）。
     summary_header_row = None
-    for row in ws.iter_rows():
-        for cell in row:
-            if cell.value == 'C8-':
-                summary_header_row = cell.row
-                break
-        if summary_header_row:
-            break
+    c8_hit = df_raw.eq('C8-').any(axis=1)
+    if c8_hit.any():
+        summary_header_row = int(c8_hit.to_numpy().argmax()) + 1
 
     rows_inserted = 0
     if summary_header_row is None:
         insert_at = header_row_idx + 1  # 0-based → 1-based
-        ws.insert_rows(insert_at, amount=4)
+        _insert_rows_sparse(ws, insert_at, 4)
         rows_inserted = 4
         summary_header_row = insert_at
 
@@ -1264,7 +1286,7 @@ def _process_single_sheet(df_raw, header_row_idx, ws, budget=None, opts=None):
         rows_needed += 1 + len(others_816) + 1
     if carbon_flags:
         rows_needed += 2 + len(carbon_flags) + 1
-    ws.insert_rows(report_start_row, amount=rows_needed)
+    _insert_rows_sparse(ws, report_start_row, rows_needed)
 
     title_cell = ws.cell(row=report_start_row, column=1)
     title_cell.value = 'Validation Report'
@@ -1466,6 +1488,20 @@ def process_gcms_workbook(file_bytes: bytes, original_filename: str, opts=None):
     return out.read(), sheet_reports
 
 
+def _release_memory() -> None:
+    """
+    請求結束後主動回收記憶體。Python 釋放的物件多半留在 glibc 的 arena 裡不還給
+    作業系統，RSS 只升不降；Render 看的是 RSS，累積幾次大檔就會踩到 512MB。
+    gc.collect() 清循環參照，malloc_trim(0) 把空閒 arena 還給 OS（僅 Linux/glibc；
+    其他平台或 musl 找不到就略過，不影響功能）。
+    """
+    try:
+        gc.collect()
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except Exception:
+        pass
+
+
 # ── 錯誤一律回 JSON ────────────────────────────────────────────────────
 # 預設 Flask/Werkzeug 的錯誤頁是 HTML，前端 res.json() 解析時會炸出
 # "Unexpected token '<' ... is not valid JSON"，讓真正的錯誤原因完全看不到。
@@ -1598,6 +1634,8 @@ def classify():
 
     response.headers['X-Sheet-Reports'] = encoded
     response.headers['Access-Control-Expose-Headers'] = 'X-Sheet-Reports'
+    # 回應送完後把這次請求用掉的記憶體還給作業系統（見 _release_memory）
+    response.call_on_close(_release_memory)
     return response
 
 
