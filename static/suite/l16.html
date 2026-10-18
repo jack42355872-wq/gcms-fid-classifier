@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><script src="bridge.js"></script><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body><title>L16 最佳化工作台</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 版面：左側步驟導覽 + 右側依序排列的八個步驟；手機寬度時導覽變成橫向捲動列 */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --surface-2:#eaf0ee; --ink:#16201e; --muted:#58645f; --line:#d3dcd9;
+  --accent:#1c6680; --accent-ink:#ffffff; --accent-soft:#deedf2; --c2:#b5561d; --c2-soft:#f6e6db;
+  --good:#2b7a4b; --good-soft:#e1f1e7; --warn:#9a6300; --warn-soft:#f7ecd5; --bad:#ad3536; --bad-soft:#f7e0df;
+  --hl:#fff3b0;
+  --font-display:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --font-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --radius:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1514; --surface:#161d1c; --surface-2:#1e2826; --ink:#e3ebe8; --muted:#98a6a1; --line:#2c3835;
+  --accent:#62b2cf; --accent-ink:#0b1416; --accent-soft:#16303a; --c2:#e28a50; --c2-soft:#3a2518;
+  --good:#5fbf86; --good-soft:#163323; --warn:#e2a948; --warn-soft:#3a2c12; --bad:#e57373; --bad-soft:#3d1c1c; --hl:#4a4113; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1514; --surface:#161d1c; --surface-2:#1e2826; --ink:#e3ebe8; --muted:#98a6a1; --line:#2c3835;
+  --accent:#62b2cf; --accent-ink:#0b1416; --accent-soft:#16303a; --c2:#e28a50; --c2-soft:#3a2518;
+  --good:#5fbf86; --good-soft:#163323; --warn:#e2a948; --warn-soft:#3a2c12; --bad:#e57373; --bad-soft:#3d1c1c; --hl:#4a4113; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.65;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--line)}
+header.top h1{font-family:var(--font-display);font-size:1.75rem;margin:0;letter-spacing:.02em;text-wrap:balance}
+header.top p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.side{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.lang{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--surface)}
+.lang button{border:0;border-radius:0;padding:3px 14px;font-size:.82rem;background:transparent;color:var(--muted)}
+.lang button+button{border-left:1px solid var(--line)}
+.lang button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:500}
+.status{font-size:.85rem;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);font-size:.8rem;white-space:nowrap}
+.pill.good{background:var(--good-soft);color:var(--good);border-color:transparent}
+.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.pill.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.pill.ex{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:26px;margin-top:20px}
+nav.steps{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);align-self:start;display:flex;flex-direction:column;gap:2px}
+nav.steps a{display:flex;gap:10px;align-items:baseline;padding:7px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:.92rem;line-height:1.35}
+nav.steps a b{font-family:var(--font-mono);font-weight:500;color:var(--accent);min-width:1.2em}
+nav.steps a:hover,nav.steps a:focus-visible{background:var(--surface-2);color:var(--ink);outline:none}
+main{display:flex;flex-direction:column;gap:22px;min-width:0}
+section.step{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;min-width:0;scroll-margin-top:16px}
+section.step>h2{font-family:var(--font-display);font-size:1.3rem;margin:0 0 4px;display:flex;gap:12px;align-items:baseline}
+section.step>h2 .no{font-family:var(--font-mono);font-size:.95rem;color:var(--accent-ink);background:var(--accent);border-radius:6px;padding:1px 8px}
+.lead{color:var(--muted);margin:0 0 14px;max-width:72ch}
+.how{background:var(--surface-2);border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:.92rem;max-width:80ch}
+.how b{color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;margin:10px 0}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted)}
+input,select,textarea,button{font:inherit;color:var(--ink)}
+input[type=number],input[type=text],select{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}
+input[type=number]{width:96px;font-family:var(--font-mono);font-size:.9rem}
+input.sm{width:72px}
+textarea{width:100%;min-height:140px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px;font-family:var(--font-mono);font-size:.82rem}
+button{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 14px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:500}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tbl{overflow-x:auto;margin:8px 0;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{padding:5px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{background:var(--surface-2);font-weight:500;color:var(--muted);text-align:right}
+th:first-child,td:first-child{text-align:left}
+tr:last-child td{border-bottom:none}
+td.num,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+td.best{background:var(--accent-soft);color:var(--accent);font-weight:600}
+td.hit{background:var(--hl)}
+.neg{color:var(--bad)}
+details{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+details>summary{cursor:pointer;color:var(--accent);font-size:.9rem;list-style:none}
+details>summary::before{content:"▸ ";}
+details[open]>summary::before{content:"▾ ";}
+.formula{font-family:var(--font-mono);font-size:.88rem;background:var(--surface-2);border-radius:6px;padding:8px 12px;margin:6px 0;overflow-x:auto;white-space:pre}
+.calc{font-family:var(--font-mono);font-size:.84rem;line-height:1.7;overflow-x:auto;white-space:pre}
+.result{display:flex;flex-wrap:wrap;gap:10px 28px;align-items:baseline;background:var(--accent-soft);border-radius:8px;padding:12px 16px;margin:10px 0}
+.result .big{font-family:var(--font-mono);font-size:1.25rem;font-weight:500;color:var(--accent)}
+.result .k{font-size:.8rem;color:var(--muted)}
+.note{font-size:.85rem;color:var(--muted)}
+.warnbox{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:8px 12px;font-size:.9rem;margin:8px 0}
+.errbox{background:var(--bad-soft);color:var(--bad);border-radius:8px;padding:8px 12px;font-size:.9rem;margin:8px 0}
+.plot{width:100%;min-height:320px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.copyrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+@media (max-width:860px){.layout{grid-template-columns:minmax(0,1fr)}nav.steps{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;flex-direction:row;overflow-x:auto;background:var(--bg);padding:6px 0;border-bottom:1px solid var(--line)}nav.steps a{white-space:nowrap}.grid2{grid-template-columns:minmax(0,1fr)}.side{align-items:flex-start}.status{justify-content:flex-start}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1 data-i="title"></h1>
+      <p data-i="intro"></p>
+    </div>
+    <div class="side">
+      <div class="lang" role="group" data-i-aria="langAria">
+        <button type="button" id="langZh" lang="zh-Hant">中文</button><button type="button" id="langEn" lang="en">English</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="steps" data-i-aria="navAria">
+      <a href="#s1"><b>1</b><span data-i="n1"></span></a>
+      <a href="#s2"><b>2</b><span data-i="n2"></span></a>
+      <a href="#s3"><b>3</b><span data-i="n3"></span></a>
+      <a href="#s4"><b>4</b><span data-i="n4"></span></a>
+      <a href="#s5"><b>5</b><span data-i="n5"></span></a>
+      <a href="#s6"><b>6</b><span data-i="n6"></span></a>
+      <a href="#s7"><b>7</b><span data-i="n7"></span></a>
+      <a href="#s8"><b>8</b><span data-i="n8"></span></a>
+    </nav>
+
+    <main>
+      <!-- STEP 1 -->
+      <section class="step" id="s1">
+        <h2><span class="no">1</span><span data-i="s1h"></span></h2>
+        <p class="lead" data-i="s1lead"></p>
+        <div class="how" data-ih="s1how"></div>
+        <div class="row">
+          <button class="primary" id="btnLoadExample" data-i="btnLoadExample"></button>
+          <span class="note" id="dataSource"></span>
+        </div>
+        <details id="pasteBox">
+          <summary data-i="pasteSummary"></summary>
+          <textarea id="pasteArea" spellcheck="false"></textarea>
+          <div class="row"><button class="primary" id="btnApplyPaste" data-i="btnApplyPaste"></button><span id="pasteMsg" class="note"></span></div>
+        </details>
+        <h3 style="font-size:1rem;margin:16px 0 4px" data-i="s1fac"></h3>
+        <p class="note" style="margin:0" data-i="s1facNote"></p>
+        <div class="tbl"><table id="tblFactors"></table></div>
+        <h3 style="font-size:1rem;margin:16px 0 4px" data-i="s1resp"></h3>
+        <p class="note" style="margin:0" data-i="s1respNote"></p>
+        <div class="tbl"><table id="tblResponses"></table></div>
+        <h3 style="font-size:1rem;margin:16px 0 4px" data-i="s1data"></h3>
+        <div class="tbl" id="tblDataWrap"><table id="tblData"></table></div>
+      </section>
+
+      <!-- STEP 2 -->
+      <section class="step" id="s2">
+        <h2><span class="no">2</span><span data-i="s2h"></span></h2>
+        <p class="lead" data-i="s2lead"></p>
+        <div class="how" data-ih="s2how"></div>
+        <div class="row"><label class="f" for="s2resp"><span data-i="lblResp"></span><select id="s2resp"></select></label></div>
+        <div class="tbl"><table id="tblMain"></table></div>
+        <div id="plotMain" class="plot" style="min-height:260px"></div>
+        <details><summary data-i="s2details"></summary><div class="tbl"><table id="tblMainIdx"></table></div></details>
+      </section>
+
+      <!-- STEP 3 -->
+      <section class="step" id="s3">
+        <h2><span class="no">3</span><span data-i="s3h"></span></h2>
+        <p class="lead" data-i="s3lead"></p>
+        <div class="how" data-ih="s3how"></div>
+        <div class="tbl"><table id="tblR2"></table></div>
+        <div class="row"><label class="f" for="s3resp"><span data-i="s3pick"></span><select id="s3resp"></select></label></div>
+        <div id="s3err"></div>
+        <div class="grid2">
+          <div style="min-width:0">
+            <h3 style="font-size:1rem;margin:6px 0" data-i="s3coef"></h3>
+            <div class="tbl"><table id="tblCoef"></table></div>
+            <p class="note" id="coefNote"></p>
+          </div>
+          <div style="min-width:0"><div id="plotParity" class="plot" style="min-height:300px"></div></div>
+        </div>
+        <details><summary data-i="s3codeSum"></summary>
+          <div class="formula" data-i="s3codeFormula"></div>
+          <div class="tbl"><table id="tblCoding"></table></div>
+          <div id="shortcutBox"></div>
+        </details>
+        <details><summary data-i="s3runsSum"></summary>
+          <p class="note" data-i="s3runsNote"></p>
+          <div class="tbl"><table id="tblRuns"></table></div>
+        </details>
+      </section>
+
+      <!-- STEP 4 -->
+      <section class="step" id="s4">
+        <h2><span class="no">4</span><span data-i="s4h"></span></h2>
+        <p class="lead" data-i="s4lead"></p>
+        <div class="row" id="s4inputs"></div>
+        <div class="tbl"><table id="tblPredict"></table></div>
+        <details><summary data-i="s4calcSum"></summary>
+          <div class="row"><label class="f" for="s4resp"><span data-i="lblResp"></span><select id="s4resp"></select></label></div>
+          <div class="calc" id="s4calc"></div>
+        </details>
+      </section>
+
+      <!-- STEP 5 -->
+      <section class="step" id="s5">
+        <h2><span class="no">5</span><span data-i="s5h"></span></h2>
+        <p class="lead" data-i="s5lead"></p>
+        <div class="how" data-ih="s5how"></div>
+        <div class="tbl"><table id="tblWeights"></table></div>
+        <div id="s5out"></div>
+      </section>
+
+      <!-- STEP 6 -->
+      <section class="step" id="s6">
+        <h2><span class="no">6</span><span data-i="s6h"></span></h2>
+        <p class="lead" data-i="s6lead"></p>
+        <div class="how" data-ih="s6how"></div>
+        <div class="row">
+          <label class="f" for="s6obj"><span data-i="s6obj"></span><select id="s6obj"></select></label>
+          <label class="f" for="s6objDir"><span data-i="s6goal"></span><select id="s6objDir"><option value="max" data-i="optMax"></option><option value="min" data-i="optMin"></option></select></label>
+          <label class="f" for="s6con"><span data-i="s6con"></span><select id="s6con"></select></label>
+          <label class="f" for="s6conOp"><span data-i="s6limit"></span><select id="s6conOp"><option value="le" data-i="optLe"></option><option value="ge" data-i="optGe"></option></select></label>
+        </div>
+        <h3 style="font-size:1rem;margin:10px 0 4px" data-i="s6range"></h3>
+        <div class="tbl"><table id="tblRange"></table></div>
+        <h3 style="font-size:1rem;margin:10px 0 4px" data-i="s6extra"></h3>
+        <div id="extraBox"></div>
+        <div class="row"><button id="btnAddExtra" data-i="btnAddExtra"></button><button class="primary" id="btnPareto" data-i="btnPareto"></button><span class="note" id="paretoMsg"></span></div>
+        <div id="s6warn"></div>
+        <div id="s6res" hidden>
+          <div id="plotPareto" class="plot" style="min-height:360px"></div>
+          <div class="row" style="align-items:center">
+            <label class="f" for="epsSlider" style="flex:1 1 280px"><span data-i="s6slider"></span><input type="range" id="epsSlider" min="0" max="1" step="1" style="width:100%"></label>
+            <button id="btnKnee" data-i="btnKnee"></button>
+          </div>
+          <div id="s6pick"></div>
+          <details><summary data-i="s6frontSum"></summary><div class="tbl"><table id="tblFront"></table></div></details>
+        </div>
+      </section>
+
+      <!-- STEP 7 -->
+      <section class="step" id="s7">
+        <h2><span class="no">7</span><span data-i="s7h"></span></h2>
+        <p class="lead" data-i="s7lead"></p>
+        <div class="how" data-ih="s7how"></div>
+        <div class="row">
+          <label class="f" for="s7resp"><span data-i="lblResp"></span><select id="s7resp"></select></label>
+          <label class="f" for="s7x"><span data-i="s7x"></span><select id="s7x"></select></label>
+          <label class="f" for="s7y"><span data-i="s7y"></span><select id="s7y"></select></label>
+          <span id="s7fixed" class="row" style="margin:0"></span>
+          <button id="btnUseOpt" data-i="btnUseOpt"></button>
+        </div>
+        <div id="plotContour" class="plot" style="min-height:420px"></div>
+        <h3 style="font-size:.95rem;margin:10px 0 2px" data-i="s7formulaH"></h3>
+        <div class="formula" id="s7formula"></div>
+        <p class="note" id="s7formulaNote"></p>
+        <div class="calc" id="s7calc"></div>
+      </section>
+
+      <!-- STEP 8 -->
+      <section class="step" id="s8">
+        <h2><span class="no">8</span><span data-i="s8h"></span></h2>
+        <p class="lead" data-i="s8lead"></p>
+        <div class="how" data-ih="s8how"></div>
+        <div class="tbl"><table id="tblVcond"></table></div>
+        <div class="tbl"><table id="tblVal"></table></div>
+        <div id="s8out"></div>
+      </section>
+
+      <section class="step" id="s9">
+        <h2><span class="no">↧</span><span data-i="s9h"></span></h2>
+        <p class="lead" data-i="s9lead"></p>
+        <div class="copyrow"><button class="primary" id="btnExport" data-i="btnExport"></button><button id="btnCopy" data-i="btnCopy"></button><span id="copyMsg" class="note"></span></div>
+        <textarea id="exportArea" readonly style="margin-top:8px"></textarea>
+        <p class="note" data-i="s9refs"></p>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+/* ---------- 介面文字（中文 / English） ---------- */
+const I18N = {
+zh: {
+  title: 'L16 最佳化工作台',
+  intro: '貼上正交實驗數據，依序做主效應、二階模型、加權篩選、約束最佳化與等高線分析。每一步都列出中間數字和白話說明。',
+  langAria: '介面語言', navAria: '分析步驟',
+  n1: '數據', n2: '主效應', n3: '二階模型', n4: '單點預測', n5: '加權篩選', n6: '約束最佳化', n7: '等高線', n8: '驗證比較',
+  s1h: '數據',
+  s1lead: '每一列是一組實驗：4 個操作參數，加上你量到的各項指標。可以直接從 Excel 複製貼上。',
+  s1how: '<b>格式：</b>第一列是標題。第 1 欄是編號，第 2～5 欄是四個操作參數，第 6 欄以後每欄一個指標（例如 CO₂ 轉化率、CH₄ 產率）。欄位用 Tab（Excel 複製時就是）或逗號分隔。',
+  btnLoadExample: '載入範例數據', pasteSummary: '貼上自己的數據', btnApplyPaste: '套用貼上的數據',
+  pastePh: '編號\tT (℃)\tP (bar)\tGHSV (hr⁻¹)\tH₂/CO₂\tCO₂ 轉化率 (%)\tCH₄ 產率 (%)\nT1\t300\t10\t1200\t2.5\t36.98\t4.96',
+  s1fac: '操作參數', s1facNote: '「搜尋步距」用在第 6 步的網格搜尋，數字越小越細、算越久。',
+  s1resp: '指標設定', s1respNote: '「方向」決定最佳化時要越大越好還是越小越好。「取對數」適合只會是正值、而且數值跨度大的指標（例如 CH₄ 產率）。',
+  s1data: '目前的數據',
+  s2h: '主效應',
+  s2lead: '先不管模型，直接看每個參數在每個水準的平均表現。這是最原始、最不需要假設的看法。',
+  s2how: '<b>怎麼算：</b>例如「T = 300 ℃ 的平均」，就是把所有 T = 300 ℃ 的實驗結果加起來除以組數。L16 的每個水準剛好各有 4 組，而且另外三個參數在這 4 組裡各水準都出現一次，所以平均可以公平比較。<br><b>怎麼看：</b>Delta（最大平均 − 最小平均）越大，代表這個參數影響越大。',
+  lblResp: '指標', s2details: '每個平均是哪幾組算出來的',
+  s3h: '二階模型與預測能力',
+  s3lead: '把每個指標寫成一條公式，才能預測「沒做過的條件」。但公式要先通過預測能力的檢查，才能拿來最佳化。',
+  s3how: '<b>模型長這樣：</b>指標 = 常數 b₀ + T 的效應 + P 的效應 + GHSV 的效應 + H₂/CO₂ 的效應。每個效應都是一條拋物線（一次項 + 二次項），所以能描述「先升後降」。<br><b>R² 是什麼：</b>16 組都拿來擬合時，公式能解釋多少變化。它一定會偏樂觀，因為公式看過這 16 組。<br><b>R²<sub>pred</sub> 是什麼：</b>每次故意拿掉 1 組，用其他 15 組建公式，再預測被拿掉的那組，重複 16 次。這就像用沒考過的題目來考，比較誠實。<br><b>判斷：</b>R²<sub>pred</sub> 是負的，代表公式預測新條件的能力比「直接猜平均值」還差，這個指標就不能拿來最佳化。',
+  s3pick: '看哪個指標的細節', s3coef: '係數',
+  s3codeSum: '參數怎麼換成編碼值 u，以及係數的手算過程',
+  s3codeFormula: 'u = (實際值 − 中心值) ÷ (水準間距 ÷ 2)      → 四個水準變成 −3、−1、1、3\n效應 g = b₁ · u + b₂ · (u² − 5) ÷ 4\n在四個水準上：g(−3) = −3·b₁ + b₂　g(−1) = −b₁ − b₂　g(1) = b₁ − b₂　g(3) = 3·b₁ + b₂',
+  s3runsSum: '每一組的模型值、殘差與留一預測',
+  s3runsNote: '殘差 = 實測 − 模型值。留一預測 = 拿掉這組、用其餘各組建模後的預測值。槓桿值 h 代表這組離實驗中心多遠：越多參數落在最外側水準，h 越大（L16 介於 0.36～0.76）。留一誤差 = 殘差 ÷ (1 − h)，所以 h 越大，殘差被放大越多。',
+  s4h: '單點預測', s4lead: '輸入任何一組操作條件，看公式怎麼一項一項加出預測值。', s4calcSum: '選一個指標看完整算式',
+  s5h: '加權篩選',
+  s5lead: '把幾個指標的主效應合成一個總分，每個參數挑總分最高的水準。結果一定落在做過的水準上。',
+  s5how: '<b>為什麼要正規化：</b>CO₂ 轉化率的單位變化是幾十個百分點，CH₄ 產率只有幾個百分點，直接相加會被大的蓋過。所以每個指標先除以自己的最大 Delta，變成同一個尺度。<br><b>公式：</b>N = (水準平均 − 該參數四水準的平均) ÷ 該指標的最大 Delta；總分 = Σ 權重 × 方向 × N（望小的指標方向取 −1）。',
+  s6h: '約束最佳化',
+  s6lead: '用第 3 步的公式，在範圍內每個網格點都算一次，找出「在某個指標不超過上限的前提下，另一個指標最好」的條件。',
+  s6how: '<b>問題：</b>讓「目標」最好，同時「取捨指標」不能超過 ε。<br><b>Pareto 前緣：</b>把 ε 從嚴到鬆掃一遍，每個 ε 的最佳點連起來就是前緣。前緣上的點都是「沒辦法兩個都更好」的條件。<br><b>轉折點：</b>兩軸各自縮放到 0～1 後，離前緣兩端連線最遠的點。過了這點，目標只能再多一點點，取捨指標卻要犧牲很多。',
+  s6obj: '目標', s6goal: '要', optMax: '越大越好', optMin: '越小越好', s6con: '取捨指標', s6limit: '限制', optLe: '不超過 ε（≤）', optGe: '不低於 ε（≥）',
+  s6range: '搜尋範圍', s6extra: '其他約束（選填）', btnAddExtra: '新增約束', btnPareto: '計算 Pareto 前緣',
+  s6slider: '沿著前緣移動（ε）', btnKnee: '回到轉折點', s6frontSum: '前緣上的代表點',
+  s7h: '等高線',
+  s7lead: '固定兩個參數，畫另外兩個參數變化時的模型曲面，並把 16 組實驗點放上去，看模型和數據合不合。',
+  s7how: '<b>實驗點怎麼放：</b>大部分實驗的固定參數和切面不同，不能直接拿實測值比。所以把每組換到切面條件：<br><span class="num">校正值 = 切面上的模型值 + 殘差</span>，殘差 = 實測 − 該組自己條件的模型值。<br>意思是：這組實測比模型高多少，就假設到了切面條件也高多少。點的顏色和底色越接近，模型在那裡越準。點一下實驗點可以看算式。',
+  s7x: '橫軸', s7y: '縱軸', btnUseOpt: '固定值改用第 6 步選的點', s7formulaH: '這張圖的公式（實際單位）',
+  s8h: '驗證比較', s8lead: '做完驗證實驗後，填入實測值，和模型預測比較。',
+  s8how: '<b>建議同時跑一個對照條件。</b>觸媒批次或活化程序改變時，所有條件的數值可能整體偏高或偏低，絕對值會和模型差很多。比較「最佳條件 − 對照條件」的差距，比直接比絕對值可靠。<br><b>怎麼判斷：</b>預測誤差的參考值用第 3 步的留一 RMSE。差距在 2 倍 RMSE 以內，可以說和模型一致。',
+  s9h: '匯出', s9lead: '把目前的數據、設定和主要結果整理成文字，可貼回 Excel 或存檔。', btnExport: '產生匯出文字', btnCopy: '複製',
+  s9refs: '方法出處：主效應與正交表（Phadke, 1989）；二階模型與預測 R²（Montgomery, Design and Analysis of Experiments；Myers et al., 2016）；PRESS（Allen, 1974）；對數轉換（Box & Cox, 1964）；加權合併與 ε-約束（Marler & Arora, 2004；Haimes et al., 1971）；轉折點（Satopää et al., 2011）；部分殘差（Larsen & McCleary, 1972）。',
+
+  exNames: ['CO₂ 轉化率', 'CH₄ 產率', 'SAF 選擇性', 'SAF 產率', 'H₂ 轉化率'],
+  exSource: '範例數據：本研究 L16 正交實驗（FeMnK，已發表）', ownData: '目前使用你貼上的數據',
+  colon: '：', sep: '、', comma: '，', gap: '　', paren: s => `（${s}）`,
+  vNo: '無法建模', vGood: '可用來預測', vWarn: '勉強可用', vBad: '不能用來預測',
+  stRuns: n => `${n} 組實驗`, stResp: n => `${n} 個指標`, stOk: n => `${n} 個指標可預測`, stEx: '範例數據',
+  thParam: '參數', thName: '名稱', thUnit: '單位', thLevels: '水準', thStep: '搜尋步距', nth: n => `第 ${n} 個`,
+  thResp: '指標', thDir: '方向', thLog: '取對數', thVerdict: '判斷', thRun: '編號',
+  errMinRows: '至少需要 1 列標題 + 10 組實驗', errCols: '欄位不足：需要 編號 + 4 個參數 + 至少 1 個指標',
+  errRowCols: r => `第 ${r} 列欄位數不對`, errRowParam: r => `第 ${r} 列的參數不是數字`, errRowVal: (r, h) => `第 ${r} 列「${h}」不是數字`,
+  errLevels: h => `參數「${h}」至少需要 3 個不同水準`,
+  errNonnum: '有空白或非數字的數值', errLogpos: '取對數時數值必須大於 0', errSingular: '數據不足以估計模型（每個參數至少需要 3 個不同水準，且組數至少 10 組）',
+  errGrid: t => `網格點太多（${t} 點），請加大步距或縮小範圍`, errInfeasible: '在設定的範圍與約束下沒有可行的條件',
+  thLevelN: i => `水準 ${i}`, thRank: '影響排名', thBest: '最佳水準', thLevel: '水準', thRunsAvg: '平均的組別', thValues: '數值', thMean: '平均', hovMean: '平均',
+  thModel: '模型', thRmseFit: 'RMSE（擬合）', thRmseLoo: 'RMSE（留一）', modelLog: '取對數後建模', modelLin: '直接建模',
+  thTerm: '項目', thB1: '一次項 b₁', thB2: '二次項 b₂', b0: '常數 b₀',
+  coefLog: '這個指標是取自然對數 ln(y) 後建模，係數是 ln 尺度的；預測時先算出 ln 值，再取 e 次方。', coefLin: '係數單位和指標相同（例如 %）。',
+  thCenter: '中心值', thHalf: '間距 ÷ 2', thLvU: '水準 → u',
+  shortIntro: 'L16 是正交表，係數可以直接用水準平均手算，結果和最小平方法相同：', shortLog: '（這裡的 m 是 ln 值的平均）',
+  shortNone: '這組數據不是平衡的四水準設計，係數以最小平方法計算。',
+  thMeas: '實測', thFit: '模型值', thResid: '殘差', thLoo: '留一預測', thH: '槓桿值 h',
+  parFit: '模型值（有參與擬合）', parLoo: '留一預測（被拿掉時）', hovMeas: '實測', hovModel: '模型', hovLoo: '留一預測', parTitle: n => `實測 vs 模型：${n}`, axMeas: '實測', axModel: '模型',
+  btnS4opt: '改用第 6 步選的點', effOf: n => `${n} 的效應`, thSum: '合計', thPred: '預測值', thRel: '可信度', expSum: '（e^合計）',
+  calcCond: '條件：', calcEff: '效應', calcSum: '合計', calcPred: '預測值',
+  thWeight: '權重（0 = 不納入）', dirMaxS: '越大越好（+1）', dirMinS: '越小越好（−1）', s5none: '至少要給一個指標大於 0 的權重。',
+  s5per: (n, d, w, s) => `${n}：最大 Delta = ${d}，權重 ${w}，方向 ${s}`, s5tip: (m, d) => `(${m} − 平均) ÷ ${d}`,
+  s5score: '總分 = Σ 權重 × 方向 × N', thPick: '選', thLead: '領先第二名', s5res: '篩選結果',
+  s5close: l => `${l} 的第一名只領先不到 0.05，權重稍微改變就可能換成別的水準。`, s5note: '這一步只能選做過的水準。想在水準之間找更好的點，用第 6 步。',
+  thMin: '最小', thMax: '最大', thStepS: '步距', thPts: '點數', gridTotal: '網格總點數',
+  w6r2: (n, v) => `「${n}」的 R²pred = ${v}，模型預測不準，最佳化結果不可靠。`, w6same: '目標和取捨指標是同一個，請選不同的指標。',
+  w6extrap: '搜尋範圍超出實驗做過的範圍，模型在範圍外是外插，誤差可能很大。',
+  ariaExK: '約束指標', ariaExO: '約束方向', ariaExV: '約束值', btnDel: '刪除', noExtra: '沒有其他約束。例如可以加「CO₂ 轉化率 ≥ 60」。',
+  pmBad: n => `「${n}」無法建模，請換一個指標。`, pmSame: '目標和取捨指標要選不同的指標。', pmBusy: '計算中…',
+  pmDone: (g, f, n, ms) => `完成：${g} 個網格點，可行 ${f} 點，前緣 ${n} 點（${ms} ms）`,
+  plRuns: '實驗條件（模型值）', plFront: 'Pareto 前緣', knee: '轉折點', picked: '目前選的點', hovTrade: '取捨', hovObj: '目標',
+  axLeft: '越左越好', axRight: '越右越好', axUp: '越上越好', axDown: '越下越好',
+  vsKnee: (o, dO, c, dC) => `和轉折點比：${o} ${dO}，${c} ${dC}。`,
+  fixedLbl: n => `固定 ${n}`, cXY: '橫軸和縱軸要選不同的參數。', cNoModel: '這個指標無法建模。', cNoPlotly: '圖表元件沒有載入，請重新整理頁面。',
+  hovAdj: '校正值', hovResid: '殘差', s6pt: '第 6 步選的點',
+  fAbove: '上式', fLnRes: (a, b) => `ln 值 ${a}，e 次方 = ${b}`,
+  fNote: (fx, xn, xv, yn, yv, r) => `固定：${fx}。常數項 = b₀ + 固定參數的效應 + 兩個變動參數展開後的常數。驗算：代入 ${xn} = ${xv}、${yn} = ${yv}，得 ${r}。每條等高線就是「公式 = 某個固定值」的所有點。`,
+  epHead: id => `${id}（點選其他實驗點可切換）`, epOwn: '自己的條件：', epSlice: '切面條件：　', epLn: '（ln 尺度）',
+  ep1: '1. 模型在自己條件', ep2: '2. 殘差', ep3: '3. 模型在切面條件', ep4: '4. 校正值',
+  epOnly: l => `只有 ${l} 的效應被換成切面的值，其餘保留。`, andSep: '、',
+  vBest: '最佳條件', vRef: '對照條件', thCond: '條件', vUseOpt: '用第 6 步的點',
+  thBP: '最佳 預測', thBM: '最佳 實測', thRP: '對照 預測', thRM: '對照 實測', thDP: '預測差距', thDM: '實測差距', thLooRmse: '留一 RMSE',
+  jWait: '等待實測', jDiffOk: '差距和模型一致', jDiffBad: '差距和模型不一致', jAbsOk: '絕對值在誤差內', jAbsBad: '絕對值超出誤差',
+  ariaVB: '最佳條件實測', ariaVR: '對照條件實測',
+  s8note: '「差距和模型一致」的標準：實測差距和預測差距相差不超過 2 × √2 × 留一 RMSE（兩個條件各有一份誤差）。只填最佳條件時，改比絕對值（2 × 留一 RMSE）。',
+  exData: '# 數據', exModels: '# 模型（二階加成模型）', exOpt: (d, o, c, op) => `# 約束最佳化：${d} ${o}，${c} ${op} ε`, exPick: '選的點',
+  pasteOk: (n, m) => `已套用 ${n} 組、${m} 個指標。請到「指標設定」確認方向與是否取對數。`, pasteFail: '無法套用：',
+  copied: '已複製', copyManual: '請按 Ctrl+C（或 ⌘+C）複製選取的文字', noPlotly: '圖表元件沒有載入，表格與計算仍可使用。'
+},
+en: {
+  title: 'L16 Optimization Workbench',
+  intro: 'Paste orthogonal-array data and work through main effects, a quadratic model, weighted screening, constrained optimization and contour plots. Every step shows the intermediate numbers with a plain-language explanation.',
+  langAria: 'Interface language', navAria: 'Analysis steps',
+  n1: 'Data', n2: 'Main effects', n3: 'Quadratic model', n4: 'Point prediction', n5: 'Weighted screening', n6: 'Constrained optimization', n7: 'Contour plot', n8: 'Validation',
+  s1h: 'Data',
+  s1lead: 'Each row is one run: 4 operating parameters plus the responses you measured. You can copy and paste straight from Excel.',
+  s1how: '<b>Format:</b> The first row is the header. Column 1 is the run ID, columns 2–5 are the four operating parameters, and every column from 6 on is one response (e.g., CO₂ conversion, CH₄ yield). Separate columns with tabs (what Excel copies) or commas.',
+  btnLoadExample: 'Load example data', pasteSummary: 'Paste your own data', btnApplyPaste: 'Apply pasted data',
+  pastePh: 'Run\tT (℃)\tP (bar)\tGHSV (hr⁻¹)\tH₂/CO₂\tCO₂ conversion (%)\tCH₄ yield (%)\nT1\t300\t10\t1200\t2.5\t36.98\t4.96',
+  s1fac: 'Operating parameters', s1facNote: '"Search step" is used by the grid search in step 6. Smaller steps are finer but slower.',
+  s1resp: 'Response settings', s1respNote: '"Direction" sets whether larger or smaller is better during optimization. "Log" suits responses that are always positive and span a wide range (e.g., CH₄ yield).',
+  s1data: 'Current data',
+  s2h: 'Main effects',
+  s2lead: 'Before any model, look at the average result at each level of each parameter. This is the most direct view and needs no assumptions.',
+  s2how: '<b>How it is calculated:</b> For example, "the mean at T = 300 ℃" is the sum of all runs at T = 300 ℃ divided by the number of runs. In L16 each level has exactly 4 runs, and within those 4 runs each of the other three parameters takes every level once, so the means can be compared fairly.<br><b>How to read it:</b> The larger the Delta (largest mean − smallest mean), the stronger the parameter\'s effect.',
+  lblResp: 'Response', s2details: 'Which runs each mean comes from',
+  s3h: 'Quadratic model and predictive ability',
+  s3lead: 'Writing each response as a formula lets you predict conditions you have not run. The formula must first pass a check of predictive ability before it can be used for optimization.',
+  s3how: '<b>The model:</b> response = constant b₀ + effect of T + effect of P + effect of GHSV + effect of H₂/CO₂. Each effect is a parabola (linear + quadratic term), so it can describe a rise followed by a fall.<br><b>What R² means:</b> how much of the variation the formula explains when all 16 runs are used to fit it. It is always optimistic, because the formula has already seen these 16 runs.<br><b>What R²<sub>pred</sub> means:</b> leave out 1 run, build the formula from the other 15, predict the run that was left out, and repeat 16 times. It is like testing with questions the formula has never seen, so it is a more honest score.<br><b>Rule:</b> a negative R²<sub>pred</sub> means the formula predicts new conditions worse than simply guessing the mean, so that response cannot be used for optimization.',
+  s3pick: 'Show details for', s3coef: 'Coefficients',
+  s3codeSum: 'How parameters become coded values u, and the hand calculation of the coefficients',
+  s3codeFormula: 'u = (actual value − center) ÷ (level spacing ÷ 2)      → the four levels become −3, −1, 1, 3\neffect g = b₁ · u + b₂ · (u² − 5) ÷ 4\nat the four levels: g(−3) = −3·b₁ + b₂   g(−1) = −b₁ − b₂   g(1) = b₁ − b₂   g(3) = 3·b₁ + b₂',
+  s3runsSum: 'Model value, residual and leave-one-out prediction for each run',
+  s3runsNote: 'Residual = measured − model value. Leave-one-out (LOO) prediction = the prediction for this run from a model built on all the other runs. Leverage h measures how far the run sits from the design center: the more parameters at an outermost level, the larger h (0.36–0.76 in L16). LOO error = residual ÷ (1 − h), so a larger h inflates the residual more.',
+  s4h: 'Point prediction', s4lead: 'Enter any set of operating conditions and see how the formula adds up the prediction term by term.', s4calcSum: 'Pick a response to see the full calculation',
+  s5h: 'Weighted screening',
+  s5lead: 'Combine the main effects of several responses into one total score, then pick the level with the highest score for each parameter. The result always lands on a level that was actually run.',
+  s5how: '<b>Why normalize:</b> CO₂ conversion changes by tens of percentage points while CH₄ yield changes by only a few, so adding them directly lets the larger one dominate. Each response is first divided by its own largest Delta to put all responses on the same scale.<br><b>Formula:</b> N = (level mean − mean of that parameter\'s four levels) ÷ largest Delta of that response; score = Σ weight × direction × N (direction = −1 for smaller-is-better responses).',
+  s6h: 'Constrained optimization',
+  s6lead: 'Using the formulas from step 3, evaluate every grid point in the search range and find the conditions where one response is best while another stays within a limit.',
+  s6how: '<b>Problem:</b> make the "objective" as good as possible while the "trade-off response" stays within ε.<br><b>Pareto front:</b> sweep ε from strict to loose; joining the best point for each ε gives the front. Every point on the front is a condition where you cannot improve both responses at once.<br><b>Knee point:</b> after scaling both axes to 0–1, the point farthest from the line joining the two ends of the front. Beyond this point the objective gains only a little while the trade-off response gets much worse.',
+  s6obj: 'Objective', s6goal: 'Goal', optMax: 'Maximize', optMin: 'Minimize', s6con: 'Trade-off response', s6limit: 'Limit', optLe: 'At most ε (≤)', optGe: 'At least ε (≥)',
+  s6range: 'Search range', s6extra: 'Other constraints (optional)', btnAddExtra: 'Add constraint', btnPareto: 'Compute Pareto front',
+  s6slider: 'Move along the front (ε)', btnKnee: 'Back to knee point', s6frontSum: 'Representative points on the front',
+  s7h: 'Contour plot',
+  s7lead: 'Fix two parameters, plot the model surface as the other two vary, and overlay the 16 runs to see whether the model and the data agree.',
+  s7how: '<b>How the runs are placed:</b> most runs have fixed-parameter values that differ from the slice, so their measured values cannot be compared directly. Each run is moved to the slice conditions:<br><span class="num">adjusted value = model value on the slice + residual</span>, where residual = measured − model value at the run\'s own conditions.<br>In other words, however far the run sat above or below the model, assume the same at the slice conditions. The closer a point\'s color is to the background, the more accurate the model is there. Click a run to see its calculation.',
+  s7x: 'X axis', s7y: 'Y axis', btnUseOpt: 'Fix at the step-6 point', s7formulaH: 'Formula for this plot (real units)',
+  s8h: 'Validation', s8lead: 'After running the validation experiments, enter the measured values and compare them with the model predictions.',
+  s8how: '<b>Run a reference condition alongside.</b> When the catalyst batch or activation procedure changes, every condition may shift up or down together, so absolute values can differ a lot from the model. Comparing the difference "best − reference" is more reliable than comparing absolute values.<br><b>How to judge:</b> use the LOO RMSE from step 3 as the reference prediction error. A difference within 2 × RMSE can be called consistent with the model.',
+  s9h: 'Export', s9lead: 'Collect the current data, settings and main results as text that you can paste back into Excel or save.', btnExport: 'Generate export text', btnCopy: 'Copy',
+  s9refs: 'Method sources: main effects and orthogonal arrays (Phadke, 1989); quadratic model and predicted R² (Montgomery, Design and Analysis of Experiments; Myers et al., 2016); PRESS (Allen, 1974); log transform (Box & Cox, 1964); weighted sum and ε-constraint (Marler & Arora, 2004; Haimes et al., 1971); knee point (Satopää et al., 2011); partial residuals (Larsen & McCleary, 1972).',
+
+  exNames: ['CO₂ conversion', 'CH₄ yield', 'SAF selectivity', 'SAF yield', 'H₂ conversion'],
+  exSource: 'Example data: L16 orthogonal-array runs from this study (FeMnK, published)', ownData: 'Using your pasted data',
+  colon: ': ', sep: ', ', comma: ', ', gap: '   ', paren: s => ` (${s})`,
+  vNo: 'Cannot fit', vGood: 'Predictive', vWarn: 'Marginal', vBad: 'Not predictive',
+  stRuns: n => `${n} runs`, stResp: n => `${n} responses`, stOk: n => `${n} predictive`, stEx: 'Example data',
+  thParam: 'Parameter', thName: 'Name', thUnit: 'Unit', thLevels: 'Levels', thStep: 'Search step', nth: n => `#${n}`,
+  thResp: 'Response', thDir: 'Direction', thLog: 'Log', thVerdict: 'Verdict', thRun: 'Run',
+  errMinRows: 'Need at least 1 header row + 10 runs', errCols: 'Not enough columns: need run ID + 4 parameters + at least 1 response',
+  errRowCols: r => `Row ${r} has the wrong number of columns`, errRowParam: r => `Row ${r}: a parameter is not a number`, errRowVal: (r, h) => `Row ${r}: "${h}" is not a number`,
+  errLevels: h => `Parameter "${h}" needs at least 3 distinct levels`,
+  errNonnum: 'Some values are blank or not numbers', errLogpos: 'Values must be above 0 to take the log', errSingular: 'Not enough data to fit the model (each parameter needs at least 3 distinct levels and there must be at least 10 runs)',
+  errGrid: t => `Too many grid points (${t}); use larger steps or a smaller range`, errInfeasible: 'No condition satisfies the search range and constraints',
+  thLevelN: i => `Level ${i}`, thRank: 'Rank', thBest: 'Best level', thLevel: 'Level', thRunsAvg: 'Runs averaged', thValues: 'Values', thMean: 'Mean', hovMean: 'mean',
+  thModel: 'Model', thRmseFit: 'RMSE (fit)', thRmseLoo: 'RMSE (LOO)', modelLog: 'Fitted on ln(y)', modelLin: 'Fitted directly',
+  thTerm: 'Term', thB1: 'Linear b₁', thB2: 'Quadratic b₂', b0: 'Constant b₀',
+  coefLog: 'This response was modeled on its natural log ln(y), so the coefficients are on the ln scale. To predict, compute the ln value first, then take e to that power.', coefLin: 'Coefficients are in the same unit as the response (e.g., %).',
+  thCenter: 'Center', thHalf: 'Spacing ÷ 2', thLvU: 'Level → u',
+  shortIntro: 'L16 is an orthogonal array, so the coefficients can be calculated by hand from the level means and match least squares exactly:', shortLog: ' (here m is the mean of the ln values)',
+  shortNone: 'This data set is not a balanced four-level design, so the coefficients are computed by least squares.',
+  thMeas: 'Measured', thFit: 'Model', thResid: 'Residual', thLoo: 'LOO prediction', thH: 'Leverage h',
+  parFit: 'Model value (run included in fit)', parLoo: 'LOO prediction (run left out)', hovMeas: 'measured', hovModel: 'model', hovLoo: 'LOO', parTitle: n => `Measured vs model: ${n}`, axMeas: 'Measured', axModel: 'Model',
+  btnS4opt: 'Use the step-6 point', effOf: n => `${n} effect`, thSum: 'Sum', thPred: 'Prediction', thRel: 'Reliability', expSum: ' (e^sum)',
+  calcCond: 'Conditions: ', calcEff: 'effect', calcSum: 'sum', calcPred: 'prediction',
+  thWeight: 'Weight (0 = excluded)', dirMaxS: 'Larger is better (+1)', dirMinS: 'Smaller is better (−1)', s5none: 'Give at least one response a weight above 0.',
+  s5per: (n, d, w, s) => `${n}: largest Delta = ${d}, weight ${w}, direction ${s}`, s5tip: (m, d) => `(${m} − mean) ÷ ${d}`,
+  s5score: 'Score = Σ weight × direction × N', thPick: 'Pick', thLead: 'Lead over 2nd', s5res: 'Screening result',
+  s5close: l => `For ${l}, the top level leads by less than 0.05; a small change in the weights could switch it to another level.`, s5note: 'This step can only pick levels that were actually run. To search between levels, use step 6.',
+  thMin: 'Min', thMax: 'Max', thStepS: 'Step', thPts: 'Points', gridTotal: 'Total grid points',
+  w6r2: (n, v) => `"${n}" has R²pred = ${v}, so the model predicts poorly and the optimum is unreliable.`, w6same: 'The objective and the trade-off response are the same; choose different responses.',
+  w6extrap: 'The search range goes beyond the experimental range. Outside it the model extrapolates and errors may be large.',
+  ariaExK: 'Constraint response', ariaExO: 'Constraint direction', ariaExV: 'Constraint value', btnDel: 'Delete', noExtra: 'No other constraints. For example, you could add "CO₂ conversion ≥ 60".',
+  pmBad: n => `"${n}" cannot be modeled; choose another response.`, pmSame: 'Choose different responses for the objective and the trade-off.', pmBusy: 'Computing…',
+  pmDone: (g, f, n, ms) => `Done: ${g} grid points, ${f} feasible, ${n} on the front (${ms} ms)`,
+  plRuns: 'Runs (model values)', plFront: 'Pareto front', knee: 'Knee point', picked: 'Selected point', hovTrade: 'trade-off', hovObj: 'objective',
+  axLeft: 'lower is better', axRight: 'higher is better', axUp: 'higher is better', axDown: 'lower is better',
+  vsKnee: (o, dO, c, dC) => `Compared with the knee point: ${o} ${dO}, ${c} ${dC}.`,
+  fixedLbl: n => `Fixed ${n}`, cXY: 'Choose different parameters for the X and Y axes.', cNoModel: 'This response cannot be modeled.', cNoPlotly: 'The chart library did not load; please reload the page.',
+  hovAdj: 'adjusted', hovResid: 'residual', s6pt: 'Step-6 point',
+  fAbove: 'above', fLnRes: (a, b) => `ln value ${a}, e^ = ${b}`,
+  fNote: (fx, xn, xv, yn, yv, r) => `Fixed: ${fx}. Constant = b₀ + effects of the fixed parameters + constants from expanding the two varying parameters. Check: substituting ${xn} = ${xv} and ${yn} = ${yv} gives ${r}. Each contour line is the set of points where the formula equals one fixed value.`,
+  epHead: id => `${id} (click another run to switch)`, epOwn: 'Own conditions:   ', epSlice: 'Slice conditions: ', epLn: ' (ln scale)',
+  ep1: '1. Model at own conditions', ep2: '2. Residual', ep3: '3. Model at slice conditions', ep4: '4. Adjusted value',
+  epOnly: l => `Only the effects of ${l} are replaced with slice values; everything else is kept.`, andSep: ' and ',
+  vBest: 'Best condition', vRef: 'Reference condition', thCond: 'Condition', vUseOpt: 'Use step-6 point',
+  thBP: 'Best pred.', thBM: 'Best meas.', thRP: 'Ref. pred.', thRM: 'Ref. meas.', thDP: 'Pred. diff.', thDM: 'Meas. diff.', thLooRmse: 'LOO RMSE',
+  jWait: 'Awaiting data', jDiffOk: 'Difference consistent with model', jDiffBad: 'Difference inconsistent with model', jAbsOk: 'Absolute value within error', jAbsBad: 'Absolute value outside error',
+  ariaVB: 'Measured at best condition', ariaVR: 'Measured at reference condition',
+  s8note: 'Criterion for "consistent": the measured difference and the predicted difference differ by no more than 2 × √2 × LOO RMSE (each condition carries its own error). If only the best condition is filled in, the absolute value is compared instead (2 × LOO RMSE).',
+  exData: '# Data', exModels: '# Models (additive quadratic)', exOpt: (d, o, c, op) => `# Constrained optimization: ${d} ${o}, ${c} ${op} ε`, exPick: 'Selected point',
+  pasteOk: (n, m) => `Applied ${n} runs and ${m} responses. Check the direction and log settings under "Response settings".`, pasteFail: 'Could not apply: ',
+  copied: 'Copied', copyManual: 'Press Ctrl+C (or ⌘+C) to copy the selected text', noPlotly: 'The chart library did not load; tables and calculations still work.'
+}
+};
+const LANG_KEY = 'l16-workbench-lang';
+let LANG = (() => { try { const v = __LS.getItem(LANG_KEY); if (v === 'en' || v === 'zh') return v; } catch (e) { } return 'zh'; })();
+function T(k, ...a) { const d = I18N[LANG], v = (k in d) ? d[k] : I18N.zh[k]; return typeof v === 'function' ? v(...a) : (v ?? k); }
+function applyStatic() {
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-Hant-TW';
+  document.title = T('title');
+  document.querySelectorAll('[data-i]').forEach(el => { el.textContent = T(el.dataset.i); });
+  document.querySelectorAll('[data-ih]').forEach(el => { el.innerHTML = T(el.dataset.ih); });
+  document.querySelectorAll('[data-i-aria]').forEach(el => el.setAttribute('aria-label', T(el.dataset.iAria)));
+  const ta = document.getElementById('pasteArea'); if (ta) ta.placeholder = T('pastePh');
+  const zh = document.getElementById('langZh'), en = document.getElementById('langEn');
+  if (zh) zh.setAttribute('aria-pressed', String(LANG === 'zh'));
+  if (en) en.setAttribute('aria-pressed', String(LANG === 'en'));
+}
+applyStatic();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.27.0/plotly.min.js"></script>
+<script>
+/* ===== 計算核心（不碰畫面） ===== */
+const Core = (() => {
+  const NB = 9; // 1 + 4 linear + 4 quadratic
+  function factorCoding(factors) {
+    return factors.map(f => {
+      const lv = f.levels.slice().sort((a, b) => a - b);
+      const lo = lv[0], hi = lv[lv.length - 1];
+      return { center: (lo + hi) / 2, half: (hi - lo) / 6 };
+    });
+  }
+  function codeRow(x, coding) { return x.map((v, j) => (v - coding[j].center) / coding[j].half); }
+  function basis(u) { const r = [1]; for (const v of u) r.push(v); for (const v of u) r.push((v * v - 5) / 4); return r; }
+  function invert(M) {
+    const n = M.length, A = M.map((r, i) => [...r, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
+    for (let c = 0; c < n; c++) {
+      let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      if (Math.abs(A[p][c]) < 1e-10) return null;
+      [A[c], A[p]] = [A[p], A[c]];
+      const d = A[c][c]; for (let k = 0; k < 2 * n; k++) A[c][k] /= d;
+      for (let r = 0; r < n; r++) if (r !== c) { const f = A[r][c]; if (f) for (let k = 0; k < 2 * n; k++) A[r][k] -= f * A[c][k]; }
+    }
+    return A.map(r => r.slice(n));
+  }
+  const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+  function fitModel(X, y, factors, useLog) {
+    const n = y.length, coding = factorCoding(factors);
+    if (y.some(v => !(isFinite(v)))) return { error: '有空白或非數字的數值', code: 'nonnum' };
+    if (useLog && y.some(v => v <= 0)) return { error: '取對數時數值必須大於 0', code: 'logpos' };
+    const t = useLog ? y.map(Math.log) : y.slice();
+    const A = X.map(x => basis(codeRow(x, coding)));
+    const AtA = Array.from({ length: NB }, (_, i) => Array.from({ length: NB }, (_, j) => A.reduce((s, r) => s + r[i] * r[j], 0)));
+    const inv = invert(AtA);
+    if (!inv) return { error: '數據不足以估計模型（每個參數至少需要 3 個不同水準，且組數至少 10 組）', code: 'singular' };
+    const Aty = Array.from({ length: NB }, (_, i) => A.reduce((s, r, k) => s + r[i] * t[k], 0));
+    const b = inv.map(r => dot(r, Aty));
+    const fitT = A.map(r => dot(r, b));
+    const h = A.map(r => dot(r, inv.map(row => dot(row, r))));
+    const looT = t.map((v, i) => v - (v - fitT[i]) / (1 - h[i]));
+    const back = v => (useLog ? Math.exp(v) : v);
+    const fit = fitT.map(back), loo = looT.map(back);
+    const ybar = y.reduce((s, v) => s + v, 0) / n;
+    const sst = y.reduce((s, v) => s + (v - ybar) ** 2, 0);
+    const sse = y.reduce((s, v, i) => s + (v - fit[i]) ** 2, 0);
+    const press = y.reduce((s, v, i) => s + (v - loo[i]) ** 2, 0);
+    return { b, coding, useLog, fit, loo, h, residT: t.map((v, i) => v - fitT[i]), resid: y.map((v, i) => v - fit[i]),
+      R2: 1 - sse / sst, R2pred: 1 - press / sst, rmse: Math.sqrt(sse / n), rmseLoo: Math.sqrt(press / n), n, ybar };
+  }
+  // 單一參數的效應 g_f(x) = b1·u + b2·(u²−5)/4
+  function effect(m, j, xj) { const u = (xj - m.coding[j].center) / m.coding[j].half; return m.b[1 + j] * u + m.b[5 + j] * (u * u - 5) / 4; }
+  function predictT(m, x) { let s = m.b[0]; for (let j = 0; j < 4; j++) s += effect(m, j, x[j]); return s; }
+  function predict(m, x) { const v = predictT(m, x); return m.useLog ? Math.exp(v) : v; }
+  function breakdown(m, x) {
+    const terms = [0, 1, 2, 3].map(j => ({ j, u: (x[j] - m.coding[j].center) / m.coding[j].half, b1: m.b[1 + j], b2: m.b[5 + j], g: effect(m, j, x[j]) }));
+    const sumT = m.b[0] + terms.reduce((s, t) => s + t.g, 0);
+    return { b0: m.b[0], terms, sumT, value: m.useLog ? Math.exp(sumT) : sumT };
+  }
+  // 水準平均
+  function uniqueLevels(X, j) { return [...new Set(X.map(r => r[j]))].sort((a, b) => a - b); }
+  function levelMeans(X, y, j) {
+    const lv = uniqueLevels(X, j);
+    return lv.map(L => { const idx = X.map((r, i) => (r[j] === L ? i : -1)).filter(i => i >= 0); return { level: L, idx, mean: idx.reduce((s, i) => s + y[i], 0) / idx.length }; });
+  }
+  // 正交多項式手算捷徑（僅適用：4 個等間距水準、各水準組數相同）
+  function shortcut(X, y, j) {
+    const lm = levelMeans(X, y, j); if (lm.length !== 4) return null;
+    const cnt = lm.map(l => l.idx.length); if (cnt.some(c => c !== cnt[0])) return null;
+    const d = lm[1].level - lm[0].level; if (Math.abs((lm[2].level - lm[1].level) - d) > 1e-9 || Math.abs((lm[3].level - lm[2].level) - d) > 1e-9) return null;
+    const m = lm.map(l => l.mean);
+    return { m, b1: (-3 * m[0] - m[1] + m[2] + 3 * m[3]) / 20, b2: (m[0] - m[1] - m[2] + m[3]) / 4 };
+  }
+  // 加權合併（主效應篩選）
+  function screening(X, Ys, items) { // items: [{k, w, sign}]
+    const per = items.map(it => {
+      const y = Ys[it.k];
+      const lms = [0, 1, 2, 3].map(j => levelMeans(X, y, j));
+      const deltas = lms.map(l => Math.max(...l.map(z => z.mean)) - Math.min(...l.map(z => z.mean)));
+      const dmax = Math.max(...deltas);
+      const N = lms.map(l => { const avg = l.reduce((s, z) => s + z.mean, 0) / l.length; return l.map(z => (z.mean - avg) / dmax); });
+      return { ...it, lms, deltas, dmax, N };
+    });
+    const levels = [0, 1, 2, 3].map(j => uniqueLevels(X, j));
+    const score = levels.map((lv, j) => lv.map((_, k) => per.reduce((s, p) => s + p.w * p.sign * p.N[j][k], 0)));
+    const best = score.map((row, j) => levels[j][row.indexOf(Math.max(...row))]);
+    return { per, levels, score, best };
+  }
+  // 網格
+  function gridAxis(lo, hi, step) { const out = []; const n = Math.floor((hi - lo) / step + 1e-9); for (let k = 0; k <= n; k++) out.push(Math.round((lo + k * step) * 1e6) / 1e6); if (out[out.length - 1] < hi - 1e-9) out.push(hi); return out; }
+  // Pareto：目標 obj（max/min），取捨約束 con（le/ge），其他約束 extra
+  function pareto(models, obj, con, ranges, extra) {
+    const ax = ranges.map(r => gridAxis(r.lo, r.hi, r.step));
+    const total = ax.reduce((s, a) => s * a.length, 1);
+    if (total > 2.5e6) return { error: `網格點太多（${total.toLocaleString()} 點），請加大步距或縮小範圍`, code: 'grid', total };
+    const pts = []; const x = [0, 0, 0, 0];
+    for (const a of ax[0]) for (const b of ax[1]) for (const c of ax[2]) for (const d of ax[3]) {
+      x[0] = a; x[1] = b; x[2] = c; x[3] = d;
+      let ok = true;
+      for (const e of extra) { const v = predict(models[e.k], x); if (e.op === 'ge' ? v < e.val : v > e.val) { ok = false; break; } }
+      if (!ok) continue;
+      const fo = predict(models[obj.k], x), fc = predict(models[con.k], x);
+      pts.push({ x: [a, b, c, d], fo, fc, gain: obj.dir === 'max' ? fo : -fo, cost: con.op === 'le' ? fc : -fc });
+    }
+    if (!pts.length) return { error: '在設定的範圍與約束下沒有可行的條件', code: 'infeasible' };
+    pts.sort((p, q) => p.cost - q.cost || q.gain - p.gain);
+    const front = []; let bestGain = -Infinity;
+    for (const p of pts) if (p.gain > bestGain + 1e-12) { front.push(p); bestGain = p.gain; }
+    const cmin = front[0].cost, cmax = front[front.length - 1].cost, gmin = front[0].gain, gmax = front[front.length - 1].gain;
+    let kneeIdx = 0, best = -Infinity;
+    front.forEach((p, i) => { const s = (cmax > cmin ? (p.gain - gmin) / (gmax - gmin) : 0) - (cmax > cmin ? (p.cost - cmin) / (cmax - cmin) : 0); if (s > best) { best = s; kneeIdx = i; } });
+    return { front, kneeIdx, nGrid: total, nFeasible: pts.length, axes: ax };
+  }
+  function atEpsilon(res, epsCost) { let k = -1; res.front.forEach((p, i) => { if (p.cost <= epsCost + 1e-12) k = i; }); return k; }
+  // 校正到切面的實驗點：校正值 = 切面模型值 + 殘差（對數模型在 ln 尺度上做）
+  function adjustedPoint(m, X, i, fixedX, fx, fy) {
+    const xs = fixedX.slice(); xs[fx] = X[i][fx]; xs[fy] = X[i][fy];
+    const t = predictT(m, xs) + m.residT[i];
+    return { xs, value: m.useLog ? Math.exp(t) : t, sliceModel: predict(m, xs) };
+  }
+  return { fitModel, predict, predictT, breakdown, effect, levelMeans, uniqueLevels, shortcut, screening, pareto, atEpsilon, gridAxis, adjustedPoint, factorCoding };
+})();
+if (typeof module !== 'undefined') module.exports = Core;
+
+</script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 2) => (v == null || !isFinite(v)) ? '—' : Number(v).toFixed(d);
+const sgn = v => (v >= 0 ? '+ ' : '− ') + Math.abs(v).toFixed(4);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pm = v => (v >= 0 ? '+' : '') + fmt(v, 2);
+
+/* ---------- 範例數據（本研究 L16，已發表） ---------- */
+const EXAMPLE = {
+  factors: [
+    { name: 'T', unit: '℃', step: 5 }, { name: 'P', unit: 'bar', step: 1 },
+    { name: 'GHSV', unit: 'hr⁻¹', step: 50 }, { name: 'H₂/CO₂', unit: '', step: 0.1 }],
+  responses: [
+    { unit: '%', dir: 'max', log: false }, { unit: '%', dir: 'min', log: true }, { unit: '%', dir: 'max', log: false },
+    { unit: '%', dir: 'max', log: false }, { unit: '%', dir: 'max', log: false }],
+  runs: [
+    ['T1',300,10,1200,2.5,36.98,4.96,42.63,14.77,31.45],['T2',300,20,2000,3,53.97,6.60,43.86,22.68,54.22],
+    ['T3',300,30,2800,3.5,60.45,9.97,60.11,29.45,55.42],['T4',300,40,3600,4,59.38,8.82,46.18,27.02,63.50],
+    ['T5',320,10,2000,3.5,47.74,8.43,37.39,16.20,55.57],['T6',320,20,1200,4,67.94,21.32,34.91,19.35,75.58],
+    ['T7',320,30,3600,2.5,58.42,7.49,43.99,23.75,69.66],['T8',320,40,2800,3,56.09,8.02,58.75,31.15,64.98],
+    ['T9',340,10,2800,4,47.03,8.56,38.93,17.30,51.25],['T10',340,20,3600,3.5,57.90,5.56,29.30,16.56,54.45],
+    ['T11',340,30,1200,3,63.24,12.96,36.44,17.25,90.60],['T12',340,40,2000,2.5,43.62,13.66,11.16,4.82,66.96],
+    ['T13',360,10,3600,3,35.46,4.94,23.39,7.38,52.84],['T14',360,20,2800,2.5,48.39,5.32,50.30,23.99,67.14],
+    ['T15',360,30,2000,4,59.04,13.44,35.46,14.99,63.57],['T16',360,40,1200,3.5,55.66,12.66,44.27,19.02,84.23]]
+};
+const KEY = 'l16-workbench-v1';
+let S = null;          // 狀態
+let M = [];            // 各指標的模型
+let paretoRes = null, pickIdx = 0, pickX = null;
+
+function fromExample() {
+  return {
+    source: 'example',
+    factors: EXAMPLE.factors.map(f => ({ ...f })),
+    responses: EXAMPLE.responses.map((r, k) => ({ name: T('exNames')[k], ...r })),
+    ids: EXAMPLE.runs.map(r => r[0]),
+    X: EXAMPLE.runs.map(r => r.slice(1, 5)),
+    Y: EXAMPLE.responses.map((_, k) => EXAMPLE.runs.map(r => r[5 + k])),
+    weights: [1, 1, 0, 0, 0],
+    ranges: null, extra: [], obj: 0, con: 1, objDir: 'max', conOp: 'le',
+    s7: { resp: 0, x: 2, y: 1, fixed: null }, val: null
+  };
+}
+/* 範例指標名稱跟著語言切換；使用者自己改過的名稱不動 */
+function localizeNames() {
+  if (!S) return;
+  const cur = I18N[LANG].exNames, all = [I18N.zh.exNames, I18N.en.exNames];
+  S.responses.forEach(r => { for (const list of all) { const i = list.indexOf(r.name); if (i >= 0) { r.name = cur[i]; break; } } });
+}
+function save() { try { __LS.setItem(KEY, JSON.stringify(S)); } catch (e) { /* 無法儲存時照常運作 */ } }
+function load() { try { const t = __LS.getItem(KEY); if (t) { const s = JSON.parse(t); if (s && s.X && s.Y) return s; } } catch (e) { } return null; }
+function levelsOf(j) { return [...new Set(S.X.map(r => r[j]))].sort((a, b) => a - b); }
+function fname(j) { const f = S.factors[j]; return f.unit ? `${f.name} (${f.unit})` : f.name; }
+function rname(k) { const r = S.responses[k]; return r.unit ? `${r.name} (${r.unit})` : r.name; }
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function errText(m) {
+  if (!m) return '';
+  const map = { nonnum: 'errNonnum', logpos: 'errLogpos', singular: 'errSingular', infeasible: 'errInfeasible' };
+  if (m.code === 'grid') return T('errGrid', m.total.toLocaleString());
+  return map[m.code] ? T(map[m.code]) : (m.error || '');
+}
+
+/* ---------- 模型 ---------- */
+function refit() {
+  const F = [0, 1, 2, 3].map(j => ({ levels: levelsOf(j) }));
+  M = S.responses.map((r, k) => Core.fitModel(S.X, S.Y[k], F, r.log));
+}
+function verdict(m) {
+  if (!m || m.error) return `<span class="pill bad">${T('vNo')}</span>`;
+  if (m.R2pred >= 0.5) return `<span class="pill good">${T('vGood')}</span>`;
+  if (m.R2pred >= 0) return `<span class="pill warn">${T('vWarn')}</span>`;
+  return `<span class="pill bad">${T('vBad')}</span>`;
+}
+
+/* ---------- Step 1 ---------- */
+function renderStatus() {
+  const okResp = M.filter(m => m && !m.error && m.R2pred >= 0).length;
+  $('status').innerHTML = `<span class="pill">${T('stRuns', S.X.length)}</span><span class="pill">${T('stResp', S.responses.length)}</span><span class="pill ${okResp ? 'good' : 'bad'}">${T('stOk', okResp)}</span>`
+    + (S.source ? `<span class="pill ex">${T('stEx')}</span>` : '');
+  $('dataSource').textContent = S.source ? T('exSource') : T('ownData');
+}
+function renderFactors() {
+  let h = `<tr><th>${T('thParam')}</th><th>${T('thName')}</th><th>${T('thUnit')}</th><th>${T('thLevels')}</th><th>${T('thStep')}</th></tr>`;
+  S.factors.forEach((f, j) => {
+    h += `<tr><td>${T('nth', j + 1)}</td><td><input type="text" id="fn${j}" value="${esc(f.name)}" style="width:110px"></td>
+      <td><input type="text" id="fu${j}" value="${esc(f.unit)}" style="width:70px"></td>
+      <td class="num">${levelsOf(j).join(' / ')}</td>
+      <td><input type="number" id="fs${j}" value="${f.step}" step="any" min="0"></td></tr>`;
+  });
+  $('tblFactors').innerHTML = h;
+  S.factors.forEach((f, j) => {
+    $('fn' + j).onchange = e => { f.name = e.target.value || f.name; save(); renderAll(); };
+    $('fu' + j).onchange = e => { f.unit = e.target.value; save(); renderAll(); };
+    $('fs' + j).onchange = e => { const v = parseFloat(e.target.value); if (v > 0) { f.step = v; S.ranges = null; save(); renderS6Controls(); } };
+  });
+}
+function renderResponses() {
+  let h = `<tr><th>${T('thResp')}</th><th>${T('thName')}</th><th>${T('thUnit')}</th><th>${T('thDir')}</th><th>${T('thLog')}</th><th>R²</th><th>R²<sub>pred</sub></th><th>${T('thVerdict')}</th></tr>`;
+  S.responses.forEach((r, k) => {
+    const m = M[k];
+    h += `<tr><td>${k + 1}</td><td><input type="text" id="rn${k}" value="${esc(r.name)}" style="width:140px"></td>
+      <td><input type="text" id="ru${k}" value="${esc(r.unit)}" style="width:56px"></td>
+      <td><select id="rd${k}"><option value="max"${r.dir === 'max' ? ' selected' : ''}>${T('optMax')}</option><option value="min"${r.dir === 'min' ? ' selected' : ''}>${T('optMin')}</option></select></td>
+      <td style="text-align:center"><input type="checkbox" id="rl${k}"${r.log ? ' checked' : ''} aria-label="${T('thLog')}"></td>
+      <td class="num">${m && !m.error ? fmt(m.R2, 3) : '—'}</td><td class="num ${m && m.R2pred < 0 ? 'neg' : ''}">${m && !m.error ? fmt(m.R2pred, 3) : '—'}</td><td>${verdict(m)}</td></tr>`;
+  });
+  $('tblResponses').innerHTML = h;
+  S.responses.forEach((r, k) => {
+    $('rn' + k).onchange = e => { r.name = e.target.value || r.name; save(); renderAll(); };
+    $('ru' + k).onchange = e => { r.unit = e.target.value; save(); renderAll(); };
+    $('rd' + k).onchange = e => { r.dir = e.target.value; save(); renderAll(); };
+    $('rl' + k).onchange = e => { r.log = e.target.checked; save(); refit(); paretoRes = null; renderAll(); };
+  });
+}
+function renderData() {
+  let h = `<tr><th>${T('thRun')}</th>` + S.factors.map((_, j) => `<th>${esc(fname(j))}</th>`).join('') + S.responses.map((_, k) => `<th>${esc(rname(k))}</th>`).join('') + '</tr>';
+  S.ids.forEach((id, i) => {
+    h += `<tr><td>${esc(id)}</td>` + S.X[i].map(v => `<td class="num">${v}</td>`).join('') + S.Y.map(y => `<td class="num">${fmt(y[i], 2)}</td>`).join('') + '</tr>';
+  });
+  $('tblData').innerHTML = h;
+}
+function parsePaste(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 11) throw new Error(T('errMinRows'));
+  const split = l => (l.includes('\t') ? l.split('\t') : l.split(',')).map(s => s.trim());
+  const head = split(lines[0]);
+  if (head.length < 6) throw new Error(T('errCols'));
+  const rows = lines.slice(1).map(split);
+  const nResp = head.length - 5;
+  const X = [], Y = Array.from({ length: nResp }, () => []), ids = [];
+  rows.forEach((r, i) => {
+    if (r.length < head.length) throw new Error(T('errRowCols', i + 2));
+    ids.push(r[0] || `R${i + 1}`);
+    const x = r.slice(1, 5).map(Number);
+    if (x.some(v => !isFinite(v))) throw new Error(T('errRowParam', i + 2));
+    X.push(x);
+    for (let k = 0; k < nResp; k++) { const v = Number(r[5 + k]); if (!isFinite(v)) throw new Error(T('errRowVal', i + 2, head[5 + k])); Y[k].push(v); }
+  });
+  for (let j = 0; j < 4; j++) if (new Set(X.map(r => r[j])).size < 3) throw new Error(T('errLevels', head[1 + j]));
+  const parseName = s => { const m = s.match(/^(.*?)\s*[\(（]([^\)）]*)[\)）]\s*$/); return m ? { name: m[1], unit: m[2] } : { name: s, unit: '' }; };
+  const factors = head.slice(1, 5).map((h, j) => { const p = parseName(h); const lv = [...new Set(X.map(r => r[j]))].sort((a, b) => a - b); const span = lv[lv.length - 1] - lv[0]; return { ...p, step: +(span / 60).toPrecision(2) }; });
+  const responses = head.slice(5).map(h => ({ ...parseName(h), dir: 'max', log: false }));
+  return { source: '', factors, responses, ids, X, Y, weights: responses.map((_, k) => (k < 2 ? 1 : 0)), ranges: null, extra: [], obj: 0, con: Math.min(1, responses.length - 1), objDir: 'max', conOp: 'le', s7: { resp: 0, x: 2, y: 1, fixed: null }, val: null };
+}
+
+/* ---------- Step 2 ---------- */
+function fillSelect(id, cur) {
+  $(id).innerHTML = S.responses.map((r, k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(rname(k))}</option>`).join('');
+}
+let s2k = 0, s3k = 0, s4k = 0;
+function renderS2() {
+  fillSelect('s2resp', s2k);
+  const y = S.Y[s2k], dir = S.responses[s2k].dir, col = T('colon');
+  const lms = [0, 1, 2, 3].map(j => Core.levelMeans(S.X, y, j));
+  const nL = Math.max(...lms.map(l => l.length));
+  const deltas = lms.map(l => Math.max(...l.map(z => z.mean)) - Math.min(...l.map(z => z.mean)));
+  const order = deltas.map((d, j) => j).sort((a, b) => deltas[b] - deltas[a]);
+  let h = `<tr><th>${T('thParam')}</th>` + Array.from({ length: nL }, (_, i) => `<th>${T('thLevelN', i + 1)}</th>`).join('') + `<th>Delta</th><th>${T('thRank')}</th><th>${T('thBest')}</th></tr>`;
+  lms.forEach((l, j) => {
+    const vals = l.map(z => z.mean), best = dir === 'max' ? Math.max(...vals) : Math.min(...vals);
+    h += `<tr><td>${esc(fname(j))}</td>` + l.map(z => `<td class="num${z.mean === best ? ' best' : ''}"><span class="muted">${z.level}${col}</span>${fmt(z.mean, 2)}</td>`).join('')
+      + '<td></td>'.repeat(nL - l.length) + `<td class="num">${fmt(deltas[j], 2)}</td><td class="num">${order.indexOf(j) + 1}</td><td class="num">${l[vals.indexOf(best)].level}</td></tr>`;
+  });
+  $('tblMain').innerHTML = h;
+  let h2 = `<tr><th>${T('thParam')}</th><th>${T('thLevel')}</th><th>${T('thRunsAvg')}</th><th>${T('thValues')}</th><th>${T('thMean')}</th></tr>`;
+  lms.forEach((l, j) => l.forEach(z => { h2 += `<tr><td>${esc(fname(j))}</td><td class="num">${z.level}</td><td>${z.idx.map(i => esc(S.ids[i])).join(T('sep'))}</td><td class="num">${z.idx.map(i => fmt(y[i], 2)).join(' + ')}</td><td class="num">÷ ${z.idx.length} = ${fmt(z.mean, 3)}</td></tr>`; }));
+  $('tblMainIdx').innerHTML = h2;
+  if (window.Plotly) {
+    const muted = css('--muted'), line = css('--line'), acc = css('--accent');
+    const traces = [], layout = baseLayout({ height: 260, showlegend: false, margin: { l: 50, r: 10, t: 20, b: 46 } });
+    lms.forEach((l, j) => {
+      const ax = j ? String(j + 1) : '';
+      traces.push({ x: l.map(z => z.level), y: l.map(z => z.mean), xaxis: 'x' + ax, yaxis: 'y' + ax, mode: 'lines+markers', line: { color: acc, width: 2 }, marker: { size: 8 }, hovertemplate: `${fname(j)} = %{x}<br>${T('hovMean')} %{y:.2f}<extra></extra>` });
+      layout['xaxis' + ax] = { domain: [j * 0.25 + 0.04, j * 0.25 + 0.23], title: { text: fname(j), font: { size: 11 } }, tickvals: l.map(z => z.level), gridcolor: line, color: muted, zeroline: false };
+      layout['yaxis' + ax] = { anchor: 'x' + ax, gridcolor: line, color: muted, zeroline: false, matches: j ? 'y' : undefined, showticklabels: j === 0, title: j === 0 ? { text: rname(s2k), font: { size: 11 } } : undefined };
+    });
+    Plotly.react('plotMain', traces, layout, { displayModeBar: false, responsive: true });
+  }
+}
+function baseLayout(extra) {
+  return Object.assign({ paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', font: { family: css('--font-body'), color: css('--ink'), size: 12 }, hoverlabel: { font: { family: css('--font-mono') } } }, extra);
+}
+
+/* ---------- Step 3 ---------- */
+function renderS3() {
+  let h = `<tr><th>${T('thResp')}</th><th>${T('thModel')}</th><th>R²</th><th>R²<sub>pred</sub></th><th>${T('thRmseFit')}</th><th>${T('thRmseLoo')}</th><th>${T('thVerdict')}</th></tr>`;
+  S.responses.forEach((r, k) => {
+    const m = M[k];
+    if (!m || m.error) { h += `<tr><td>${esc(rname(k))}</td><td colspan="5">${esc(errText(m))}</td><td>${verdict(m)}</td></tr>`; return; }
+    h += `<tr><td>${esc(rname(k))}</td><td>${r.log ? T('modelLog') : T('modelLin')}</td><td class="num">${fmt(m.R2, 3)}</td><td class="num ${m.R2pred < 0 ? 'neg' : ''}">${fmt(m.R2pred, 3)}</td><td class="num">${fmt(m.rmse, 2)}</td><td class="num">${fmt(m.rmseLoo, 2)}</td><td>${verdict(m)}</td></tr>`;
+  });
+  $('tblR2').innerHTML = h;
+  fillSelect('s3resp', s3k);
+  const m = M[s3k];
+  $('s3err').innerHTML = m && m.error ? `<div class="errbox">${esc(errText(m))}</div>` : '';
+  if (!m || m.error) { ['tblCoef', 'tblCoding', 'tblRuns'].forEach(id => $(id).innerHTML = ''); $('shortcutBox').innerHTML = ''; return; }
+  const lg = S.responses[s3k].log;
+  let c = `<tr><th>${T('thTerm')}</th><th>${T('thB1')}</th><th>${T('thB2')}</th></tr><tr><td>${T('b0')}</td><td class="num" colspan="2" style="text-align:center">${fmt(m.b[0], 4)}</td></tr>`;
+  for (let j = 0; j < 4; j++) c += `<tr><td>${esc(fname(j))}</td><td class="num">${fmt(m.b[1 + j], 4)}</td><td class="num">${fmt(m.b[5 + j], 4)}</td></tr>`;
+  $('tblCoef').innerHTML = c;
+  $('coefNote').textContent = lg ? T('coefLog') : T('coefLin');
+  let cd = `<tr><th>${T('thParam')}</th><th>${T('thCenter')}</th><th>${T('thHalf')}</th><th>${T('thLvU')}</th></tr>`;
+  m.coding.forEach((cj, j) => { cd += `<tr><td>${esc(fname(j))}</td><td class="num">${fmt(cj.center, 3)}</td><td class="num">${fmt(cj.half, 3)}</td><td class="num">${levelsOf(j).map(L => `${L} → ${fmt((L - cj.center) / cj.half, 2)}`).join(T('gap'))}</td></tr>`; });
+  $('tblCoding').innerHTML = cd;
+  // 手算捷徑
+  const yT = lg ? S.Y[s3k].map(Math.log) : S.Y[s3k];
+  let sc = `<p class="note">${T('shortIntro')}<br>b₁ = (−3·m₁ − m₂ + m₃ + 3·m₄) ÷ 20${T('gap')}${T('gap')}b₂ = (m₁ − m₂ − m₃ + m₄) ÷ 4${lg ? T('shortLog') : ''}</p><div class="calc">`;
+  let anyShort = false;
+  for (let j = 0; j < 4; j++) {
+    const s = Core.shortcut(S.X, yT, j); if (!s) continue; anyShort = true;
+    const m4 = s.m.map(v => fmt(v, 4));
+    sc += `${esc(fname(j))}${T('colon')}m = ${m4.join(', ')}\n  b₁ = (−3×${m4[0]} − ${m4[1]} + ${m4[2]} + 3×${m4[3]}) ÷ 20 = ${fmt(s.b1, 4)}\n  b₂ = (${m4[0]} − ${m4[1]} − ${m4[2]} + ${m4[3]}) ÷ 4 = ${fmt(s.b2, 4)}\n\n`;
+  }
+  sc += '</div>';
+  $('shortcutBox').innerHTML = anyShort ? sc : `<p class="note">${T('shortNone')}</p>`;
+  let rr = `<tr><th>${T('thRun')}</th><th>${T('thMeas')}</th><th>${T('thFit')}</th><th>${T('thResid')}</th><th>${T('thLoo')}</th><th>${T('thH')}</th></tr>`;
+  S.ids.forEach((id, i) => { rr += `<tr><td>${esc(id)}</td><td class="num">${fmt(S.Y[s3k][i], 2)}</td><td class="num">${fmt(m.fit[i], 2)}</td><td class="num">${fmt(m.resid[i], 2)}</td><td class="num">${fmt(m.loo[i], 2)}</td><td class="num">${fmt(m.h[i], 3)}</td></tr>`; });
+  $('tblRuns').innerHTML = rr;
+  if (window.Plotly) {
+    const y = S.Y[s3k], lo = Math.min(...y, ...m.fit, ...m.loo), hi = Math.max(...y, ...m.fit, ...m.loo), pad = (hi - lo) * 0.06;
+    const acc = css('--accent'), c2 = css('--c2'), muted = css('--muted'), line = css('--line');
+    const seg = { x: [], y: [], mode: 'lines', line: { color: line, width: 1 }, hoverinfo: 'skip', showlegend: false };
+    y.forEach((v, i) => { seg.x.push(v, v, null); seg.y.push(m.fit[i], m.loo[i], null); });
+    Plotly.react('plotParity', [
+      { x: [lo - pad, hi + pad], y: [lo - pad, hi + pad], mode: 'lines', line: { color: muted, dash: 'dash', width: 1 }, hoverinfo: 'skip', showlegend: false }, seg,
+      { x: y, y: m.fit, mode: 'markers', name: T('parFit'), marker: { size: 9, color: 'rgba(0,0,0,0)', line: { color: acc, width: 2 } }, text: S.ids, hovertemplate: `%{text}<br>${T('hovMeas')} %{x:.2f}<br>${T('hovModel')} %{y:.2f}<extra></extra>` },
+      { x: y, y: m.loo, mode: 'markers', name: T('parLoo'), marker: { size: 8, color: c2 }, text: S.ids, hovertemplate: `%{text}<br>${T('hovMeas')} %{x:.2f}<br>${T('hovLoo')} %{y:.2f}<extra></extra>` }],
+      baseLayout({ height: 320, margin: { l: 50, r: 10, t: 28, b: 46 }, title: { text: T('parTitle', rname(s3k)), font: { size: 13 }, x: 0.02 }, legend: { orientation: 'h', y: -0.22, font: { size: 11 } },
+        xaxis: { title: { text: T('axMeas'), font: { size: 11 } }, gridcolor: line, color: muted, zeroline: false, range: [lo - pad, hi + pad] },
+        yaxis: { title: { text: T('axModel'), font: { size: 11 } }, gridcolor: line, color: muted, zeroline: false, range: [lo - pad, hi + pad], scaleanchor: 'x' } }), { displayModeBar: false, responsive: true });
+  }
+}
+
+/* ---------- Step 4 ---------- */
+let s4x = null;
+function renderS4() {
+  if (!s4x) s4x = pickX ? pickX.slice() : [0, 1, 2, 3].map(j => levelsOf(j)[0]);
+  $('s4inputs').innerHTML = [0, 1, 2, 3].map(j => `<label class="f" for="s4x${j}">${esc(fname(j))}<input type="number" id="s4x${j}" step="any" value="${s4x[j]}"></label>`).join('') + `<button id="btnS4opt">${T('btnS4opt')}</button>`;
+  [0, 1, 2, 3].forEach(j => $('s4x' + j).onchange = e => { const v = parseFloat(e.target.value); if (isFinite(v)) { s4x[j] = v; renderS4(); } });
+  $('btnS4opt').onclick = () => { if (pickX) { s4x = pickX.slice(); renderS4(); } };
+  let h = `<tr><th>${T('thResp')}</th><th>${T('b0')}</th>` + [0, 1, 2, 3].map(j => `<th>${esc(T('effOf', S.factors[j].name))}</th>`).join('') + `<th>${T('thSum')}</th><th>${T('thPred')}</th><th>${T('thRel')}</th></tr>`;
+  S.responses.forEach((r, k) => {
+    const m = M[k]; if (!m || m.error) return;
+    const bd = Core.breakdown(m, s4x);
+    h += `<tr><td>${esc(rname(k))}</td><td class="num">${fmt(bd.b0, 3)}</td>` + bd.terms.map(t => `<td class="num">${(t.g >= 0 ? '+' : '') + fmt(t.g, 3)}</td>`).join('')
+      + `<td class="num">${fmt(bd.sumT, 3)}</td><td class="num"><b>${fmt(bd.value, 2)}</b>${r.log ? `<span class="muted">${T('expSum')}</span>` : ''}</td><td>${verdict(m)}</td></tr>`;
+  });
+  $('tblPredict').innerHTML = h;
+  fillSelect('s4resp', s4k);
+  const m = M[s4k];
+  if (!m || m.error) { $('s4calc').textContent = ''; return; }
+  const bd = Core.breakdown(m, s4x);
+  let t = `${T('calcCond')}${[0, 1, 2, 3].map(j => `${S.factors[j].name} = ${s4x[j]}`).join(T('comma'))}\n\n`;
+  bd.terms.forEach(tm => {
+    const cj = m.coding[tm.j];
+    t += `${fname(tm.j)}\n  u = (${s4x[tm.j]} − ${fmt(cj.center, 3)}) ÷ ${fmt(cj.half, 3)} = ${fmt(tm.u, 3)}\n  ${T('calcEff')} = b₁·u + b₂·(u² − 5)/4 = ${fmt(tm.b1, 4)} × ${fmt(tm.u, 3)} ${sgn(tm.b2)} × (${fmt(tm.u * tm.u, 3)} − 5)/4 = ${fmt(tm.g, 4)}\n`;
+  });
+  t += `\n${T('calcSum')} = ${fmt(bd.b0, 4)} ${bd.terms.map(tm => sgn(tm.g)).join(' ')} = ${fmt(bd.sumT, 4)}`;
+  if (S.responses[s4k].log) t += `\n${T('calcPred')} = e^${fmt(bd.sumT, 4)} = ${fmt(bd.value, 3)}`;
+  $('s4calc').textContent = t;
+}
+
+/* ---------- Step 5 ---------- */
+function renderS5() {
+  const col = T('colon');
+  let h = `<tr><th>${T('thResp')}</th><th>${T('thDir')}</th><th>${T('thWeight')}</th><th>${T('thRel')}</th></tr>`;
+  S.responses.forEach((r, k) => { h += `<tr><td>${esc(rname(k))}</td><td>${r.dir === 'max' ? T('dirMaxS') : T('dirMinS')}</td><td><input type="number" id="w${k}" class="sm" step="any" min="0" value="${S.weights[k] ?? 0}" aria-label="${esc(rname(k))}"></td><td>${verdict(M[k])}</td></tr>`; });
+  $('tblWeights').innerHTML = h;
+  S.responses.forEach((r, k) => $('w' + k).onchange = e => { const v = parseFloat(e.target.value); S.weights[k] = isFinite(v) && v >= 0 ? v : 0; save(); renderS5(); });
+  const items = S.responses.map((r, k) => ({ k, w: S.weights[k] || 0, sign: r.dir === 'max' ? 1 : -1 })).filter(it => it.w > 0);
+  if (!items.length) { $('s5out').innerHTML = `<div class="warnbox">${T('s5none')}</div>`; return; }
+  const sr = Core.screening(S.X, S.Y, items);
+  let o = '';
+  sr.per.forEach(p => {
+    o += `<h3 style="font-size:.95rem;margin:12px 0 2px">${esc(T('s5per', rname(p.k), fmt(p.dmax, 3), p.w, p.sign > 0 ? '+1' : '−1'))}</h3><div class="tbl"><table><tr><th>${T('thParam')}</th>${sr.levels[0].map((_, i) => `<th>${T('thLevelN', i + 1)}</th>`).join('')}</tr>`;
+    p.N.forEach((row, j) => { o += `<tr><td>${esc(fname(j))}</td>` + row.map((v, i) => `<td class="num" title="${esc(T('s5tip', fmt(p.lms[j][i].mean, 3), fmt(p.dmax, 3)))}"><span class="muted">${sr.levels[j][i]}${col}</span>${fmt(v, 3)}</td>`).join('') + '</tr>'; });
+    o += '</table></div>';
+  });
+  o += `<h3 style="font-size:.95rem;margin:14px 0 2px">${T('s5score')}</h3><div class="tbl"><table><tr><th>${T('thParam')}</th>${sr.levels[0].map((_, i) => `<th>${T('thLevelN', i + 1)}</th>`).join('')}<th>${T('thPick')}</th><th>${T('thLead')}</th></tr>`;
+  sr.score.forEach((row, j) => {
+    const mx = Math.max(...row), srt = row.slice().sort((a, b) => b - a);
+    o += `<tr><td>${esc(fname(j))}</td>` + row.map((v, i) => `<td class="num${v === mx ? ' best' : ''}"><span class="muted">${sr.levels[j][i]}${col}</span>${fmt(v, 3)}</td>`).join('') + `<td class="num">${sr.best[j]}</td><td class="num">${fmt(srt[0] - srt[1], 3)}</td></tr>`;
+  });
+  o += '</table></div>';
+  const close = sr.score.map((row, j) => { const s = row.slice().sort((a, b) => b - a); return s[0] - s[1] < 0.05 ? fname(j) : null; }).filter(Boolean);
+  o += `<div class="result"><span class="k">${T('s5res')}</span><span class="big">${sr.best.map((v, j) => `${esc(S.factors[j].name)} ${v}`).join(' / ')}</span></div>`;
+  if (close.length) o += `<div class="warnbox">${esc(T('s5close', close.join(T('sep'))))}</div>`;
+  o += `<p class="note">${T('s5note')}</p>`;
+  $('s5out').innerHTML = o;
+}
+
+/* ---------- Step 6 ---------- */
+function defaultRanges() { return [0, 1, 2, 3].map(j => { const lv = levelsOf(j); return { lo: lv[0], hi: lv[lv.length - 1], step: S.factors[j].step }; }); }
+function renderS6Controls() {
+  if (!S.ranges) S.ranges = defaultRanges();
+  ['s6obj', 's6con'].forEach((id, n) => { $(id).innerHTML = S.responses.map((r, k) => `<option value="${k}"${k === (n ? S.con : S.obj) ? ' selected' : ''}>${esc(rname(k))}</option>`).join(''); });
+  $('s6objDir').value = S.objDir; $('s6conOp').value = S.conOp;
+  let h = `<tr><th>${T('thParam')}</th><th>${T('thMin')}</th><th>${T('thMax')}</th><th>${T('thStepS')}</th><th>${T('thPts')}</th></tr>`;
+  S.ranges.forEach((r, j) => { h += `<tr><td>${esc(fname(j))}</td><td><input type="number" id="rlo${j}" step="any" value="${r.lo}" aria-label="${esc(fname(j))} ${T('thMin')}"></td><td><input type="number" id="rhi${j}" step="any" value="${r.hi}" aria-label="${esc(fname(j))} ${T('thMax')}"></td><td><input type="number" id="rst${j}" step="any" min="0" value="${r.step}" aria-label="${esc(fname(j))} ${T('thStepS')}"></td><td class="num">${Core.gridAxis(r.lo, r.hi, r.step).length}</td></tr>`; });
+  const tot = S.ranges.reduce((s, r) => s * Core.gridAxis(r.lo, r.hi, r.step).length, 1);
+  h += `<tr><td colspan="4">${T('gridTotal')}</td><td class="num">${tot.toLocaleString()}</td></tr>`;
+  $('tblRange').innerHTML = h;
+  S.ranges.forEach((r, j) => ['lo', 'hi', 'st'].forEach(t => { $('r' + t + j).onchange = e => { const v = parseFloat(e.target.value); if (!isFinite(v)) return; if (t === 'st') { if (v > 0) r.step = v; } else r[t] = v; if (r.lo > r.hi) [r.lo, r.hi] = [r.hi, r.lo]; save(); renderS6Controls(); }; }));
+  renderExtra();
+  const w = [];
+  [S.obj, S.con].forEach(k => { const m = M[k]; if (m && !m.error && m.R2pred < 0) w.push(T('w6r2', rname(k), fmt(m.R2pred, 2))); });
+  if (S.obj === S.con) w.push(T('w6same'));
+  const lv = defaultRanges(); if (S.ranges.some((r, j) => r.lo < lv[j].lo - 1e-9 || r.hi > lv[j].hi + 1e-9)) w.push(T('w6extrap'));
+  $('s6warn').innerHTML = w.map(t => `<div class="warnbox">${esc(t)}</div>`).join('');
+}
+function renderExtra() {
+  $('extraBox').innerHTML = S.extra.length ? S.extra.map((e, i) => `<div class="row" style="margin:4px 0"><select id="exk${i}" aria-label="${T('ariaExK')}">${S.responses.map((r, k) => `<option value="${k}"${k === e.k ? ' selected' : ''}>${esc(rname(k))}</option>`).join('')}</select><select id="exo${i}" aria-label="${T('ariaExO')}"><option value="ge"${e.op === 'ge' ? ' selected' : ''}>≥</option><option value="le"${e.op === 'le' ? ' selected' : ''}>≤</option></select><input type="number" id="exv${i}" step="any" value="${e.val}" aria-label="${T('ariaExV')}"><button id="exd${i}">${T('btnDel')}</button></div>`).join('') : `<p class="note" style="margin:0">${T('noExtra')}</p>`;
+  S.extra.forEach((e, i) => {
+    $('exk' + i).onchange = ev => { e.k = +ev.target.value; save(); };
+    $('exo' + i).onchange = ev => { e.op = ev.target.value; save(); };
+    $('exv' + i).onchange = ev => { const v = parseFloat(ev.target.value); if (isFinite(v)) { e.val = v; save(); } };
+    $('exd' + i).onclick = () => { S.extra.splice(i, 1); save(); renderExtra(); };
+  });
+}
+function paretoDoneMsg() { return paretoRes ? T('pmDone', paretoRes.nGrid.toLocaleString(), paretoRes.nFeasible.toLocaleString(), paretoRes.front.length, paretoRes.ms) : ''; }
+function runPareto() {
+  const bad = [S.obj, S.con, ...S.extra.map(e => e.k)].find(k => !M[k] || M[k].error);
+  if (bad !== undefined) { $('paretoMsg').textContent = T('pmBad', rname(bad)); return; }
+  if (S.obj === S.con) { $('paretoMsg').textContent = T('pmSame'); return; }
+  $('paretoMsg').textContent = T('pmBusy');
+  setTimeout(() => {
+    const t0 = performance.now();
+    const res = Core.pareto(M, { k: S.obj, dir: S.objDir }, { k: S.con, op: S.conOp }, S.ranges, S.extra);
+    if (res.error) { $('paretoMsg').textContent = errText(res); $('s6res').hidden = true; return; }
+    res.ms = Math.round(performance.now() - t0);
+    paretoRes = res; pickIdx = res.kneeIdx; pickX = res.front[pickIdx].x.slice();
+    $('paretoMsg').textContent = paretoDoneMsg();
+    $('s6res').hidden = false;
+    $('epsSlider').max = res.front.length - 1; $('epsSlider').value = pickIdx;
+    renderParetoPlot(); renderPick(); renderFrontTable();
+    S.s7.fixed = null; renderS7(); s4x = pickX.slice(); renderS4(); renderS8();
+  }, 30);
+}
+function renderParetoPlot() {
+  if (!paretoRes || !window.Plotly) return;
+  const fr = paretoRes.front, kn = fr[paretoRes.kneeIdx], pk = fr[pickIdx];
+  const acc = css('--accent'), ink = css('--ink'), muted = css('--muted'), line = css('--line'), c2 = css('--c2');
+  const runs = { x: S.X.map(x => Core.predict(M[S.con], x)), y: S.X.map(x => Core.predict(M[S.obj], x)), mode: 'markers', name: T('plRuns'), marker: { color: muted, size: 7, opacity: .6 }, text: S.ids, hovertemplate: '%{text}<br>%{x:.2f} / %{y:.2f}<extra></extra>' };
+  const desc = p => p.x.map((v, j) => `${S.factors[j].name} ${v}`).join(' / ');
+  Plotly.react('plotPareto', [runs,
+    { x: fr.map(p => p.fc), y: fr.map(p => p.fo), mode: 'lines', name: T('plFront'), line: { color: acc, width: 2.5 }, text: fr.map(desc), hovertemplate: `%{text}<br>${T('hovTrade')} %{x:.2f}${T('comma')}${T('hovObj')} %{y:.2f}<extra></extra>` },
+    { x: [kn.fc], y: [kn.fo], mode: 'markers', name: T('knee'), marker: { symbol: 'star', size: 18, color: ink }, text: [desc(kn)], hovertemplate: `${T('knee')}<br>%{text}<extra></extra>` },
+    { x: [pk.fc], y: [pk.fo], mode: 'markers', name: T('picked'), marker: { symbol: 'circle-open', size: 16, color: c2, line: { width: 3 } }, hoverinfo: 'skip' }],
+    baseLayout({ height: 360, margin: { l: 56, r: 12, t: 16, b: 50 }, legend: { orientation: 'h', y: -0.2, font: { size: 11 } },
+      xaxis: { title: { text: rname(S.con) + T('paren', S.conOp === 'le' ? T('axLeft') : T('axRight')), font: { size: 11 } }, gridcolor: line, color: muted, zeroline: false },
+      yaxis: { title: { text: rname(S.obj) + T('paren', S.objDir === 'max' ? T('axUp') : T('axDown')), font: { size: 11 } }, gridcolor: line, color: muted, zeroline: false } }), { displayModeBar: false, responsive: true });
+}
+function renderPick() {
+  const p = paretoRes.front[pickIdx], isKnee = pickIdx === paretoRes.kneeIdx;
+  let h = `<div class="result"><span class="k">${(isKnee ? T('knee') : T('picked')) + T('paren', 'ε = ' + fmt(p.fc, 3))}</span><span class="big">${p.x.map((v, j) => `${esc(S.factors[j].name)} ${v}`).join(' / ')}</span></div>`;
+  h += `<div class="tbl"><table><tr><th>${T('thResp')}</th><th>${T('thPred')}</th><th>${T('thLooRmse')}</th><th>${T('thRel')}</th></tr>` + S.responses.map((r, k) => { const m = M[k]; if (!m || m.error) return ''; return `<tr><td>${esc(rname(k))}</td><td class="num">${fmt(Core.predict(m, p.x), 2)}</td><td class="num">± ${fmt(m.rmseLoo, 2)}</td><td>${verdict(m)}</td></tr>`; }).join('') + '</table></div>';
+  if (!isKnee) { const kn = paretoRes.front[paretoRes.kneeIdx]; h += `<p class="note">${esc(T('vsKnee', rname(S.obj), pm(p.fo - kn.fo), rname(S.con), pm(p.fc - kn.fc)))}</p>`; }
+  $('s6pick').innerHTML = h;
+}
+function renderFrontTable() {
+  const fr = paretoRes.front, n = fr.length, idx = [...new Set([...Array.from({ length: Math.min(12, n) }, (_, i) => Math.round(i * (n - 1) / Math.max(1, Math.min(12, n) - 1))), paretoRes.kneeIdx])].sort((a, b) => a - b);
+  $('tblFront').innerHTML = '<tr>' + [0, 1, 2, 3].map(j => `<th>${esc(fname(j))}</th>`).join('') + `<th>${esc(rname(S.obj))}</th><th>${esc(rname(S.con))}</th><th></th></tr>` + idx.map(i => `<tr>${fr[i].x.map(v => `<td class="num">${v}</td>`).join('')}<td class="num">${fmt(fr[i].fo, 2)}</td><td class="num">${fmt(fr[i].fc, 2)}</td><td>${i === paretoRes.kneeIdx ? `<span class="pill ex">${T('knee')}</span>` : ''}</td></tr>`).join('');
+}
+
+/* ---------- Step 7 ---------- */
+let s7sel = null;
+function renderS7() {
+  const st = S.s7;
+  fillSelect('s7resp', st.resp);
+  $('s7x').innerHTML = [0, 1, 2, 3].map(j => `<option value="${j}"${j === st.x ? ' selected' : ''}>${esc(fname(j))}</option>`).join('');
+  $('s7y').innerHTML = [0, 1, 2, 3].map(j => `<option value="${j}"${j === st.y ? ' selected' : ''}>${esc(fname(j))}</option>`).join('');
+  if (!st.fixed) st.fixed = pickX ? pickX.slice() : [0, 1, 2, 3].map(j => levelsOf(j)[0]);
+  const others = [0, 1, 2, 3].filter(j => j !== st.x && j !== st.y);
+  $('s7fixed').innerHTML = others.map(j => `<label class="f" for="s7f${j}">${esc(T('fixedLbl', fname(j)))}<input type="number" id="s7f${j}" step="any" value="${st.fixed[j]}"></label>`).join('');
+  others.forEach(j => $('s7f' + j).onchange = e => { const v = parseFloat(e.target.value); if (isFinite(v)) { st.fixed[j] = v; s7sel = null; save(); drawContour(); } });
+  drawContour();
+}
+function drawContour() {
+  const st = S.s7, m = M[st.resp];
+  if (st.x === st.y) { $('s7calc').textContent = T('cXY'); $('s7formula').textContent = ''; $('s7formulaNote').textContent = ''; if (window.Plotly) Plotly.purge('plotContour'); return; }
+  if (!m || m.error) { $('s7calc').textContent = T('cNoModel'); return; }
+  if (!window.Plotly) { $('s7calc').textContent = T('cNoPlotly'); return; }
+  const lvx = levelsOf(st.x), lvy = levelsOf(st.y), nx = 61, ny = 61;
+  const xs = Array.from({ length: nx }, (_, i) => lvx[0] + (lvx[lvx.length - 1] - lvx[0]) * i / (nx - 1));
+  const ys = Array.from({ length: ny }, (_, i) => lvy[0] + (lvy[lvy.length - 1] - lvy[0]) * i / (ny - 1));
+  const z = ys.map(yv => xs.map(xv => { const p = st.fixed.slice(); p[st.x] = xv; p[st.y] = yv; return Core.predict(m, p); }));
+  const adj = S.X.map((_, i) => Core.adjustedPoint(m, S.X, i, st.fixed, st.x, st.y));
+  const onSlice = S.X.map(x => [0, 1, 2, 3].every(j => j === st.x || j === st.y || Math.abs(x[j] - st.fixed[j]) < 1e-9));
+  const zall = z.flat().concat(adj.map(a => a.value)), zmin = Math.min(...zall), zmax = Math.max(...zall);
+  const dark = getComputedStyle(document.documentElement).colorScheme === 'dark';
+  const scale = S.responses[st.resp].dir === 'max' ? 'Blues' : 'Oranges';
+  const muted = css('--muted'), ink = css('--ink');
+  const traces = [
+    { type: 'contour', x: xs, y: ys, z, zmin, zmax, colorscale: scale, reversescale: dark, contours: { coloring: 'heatmap', showlabels: true, labelfont: { size: 10, color: ink } }, line: { width: .6, color: 'rgba(0,0,0,.25)' }, colorbar: { title: { text: rname(st.resp), side: 'right', font: { size: 11 } }, thickness: 12, tickfont: { color: muted } }, hovertemplate: `${S.factors[st.x].name} %{x:.3g}<br>${S.factors[st.y].name} %{y:.3g}<br>${T('hovModel')} %{z:.2f}<extra></extra>` },
+    { type: 'scatter', mode: 'markers+text', x: S.X.map(x => x[st.x]), y: S.X.map(x => x[st.y]), text: S.ids, textposition: 'top center', textfont: { size: 10, color: ink },
+      marker: { size: onSlice.map(o => o ? 16 : 12), color: adj.map(a => a.value), colorscale: scale, reversescale: dark, cmin: zmin, cmax: zmax, line: { color: ink, width: onSlice.map(o => o ? 3 : 1) } },
+      customdata: adj.map((a, i) => [S.Y[st.resp][i], m.resid[i], a.value]), hovertemplate: `%{text}<br>${T('hovMeas')} %{customdata[0]:.2f}<br>${T('hovResid')} %{customdata[1]:+.2f}<br>${T('hovAdj')} %{customdata[2]:.2f}<extra></extra>`, showlegend: false }];
+  if (pickX) traces.push({ type: 'scatter', mode: 'markers', x: [pickX[st.x]], y: [pickX[st.y]], marker: { symbol: 'star', size: 18, color: ink }, name: T('s6pt'), hovertemplate: `${T('s6pt')}<extra></extra>`, showlegend: false });
+  Plotly.react('plotContour', traces, baseLayout({ height: 440, margin: { l: 60, r: 10, t: 16, b: 50 },
+    xaxis: { title: { text: fname(st.x), font: { size: 11 } }, tickvals: lvx, color: muted, zeroline: false, showgrid: false },
+    yaxis: { title: { text: fname(st.y), font: { size: 11 } }, tickvals: lvy, color: muted, zeroline: false, showgrid: false } }), { displayModeBar: false, responsive: true });
+  const el = $('plotContour');
+  if (el.removeAllListeners) el.removeAllListeners('plotly_click');
+  el.on('plotly_click', ev => { const p = ev.points.find(q => q.curveNumber === 1); if (p) { s7sel = p.pointIndex; explainPoint(); } });
+  renderSliceFormula();
+  explainPoint();
+}
+function supNum(n) { return String(n).replace(/[-0-9]/g, c => ({ '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' }[c])); }
+function fsig(v) { const a = Math.abs(v); if (a !== 0 && a < 1e-3) { const e = Math.floor(Math.log10(a)); return `${+(a / 10 ** e).toPrecision(6)}×10${supNum(e)}`; } return String(+a.toPrecision(6)); }
+function polyOf(m, j) { const c = m.coding[j].center, h = m.coding[j].half, b1 = m.b[1 + j], b2 = m.b[5 + j]; return { a2: b2 / (4 * h * h), a1: b1 / h - b2 * c / (2 * h * h), a0: -b1 * c / h + b2 * (c * c / (h * h) - 5) / 4 }; }
+function renderSliceFormula() {
+  const st = S.s7, m = M[st.resp]; if (!m || m.error || st.x === st.y) { $('s7formula').textContent = ''; $('s7formulaNote').textContent = ''; return; }
+  const vn = j => (/[\/+\-]/.test(S.factors[j].name) ? `(${S.factors[j].name})` : S.factors[j].name);
+  const px = polyOf(m, st.x), py = polyOf(m, st.y), fixedJ = [0, 1, 2, 3].filter(j => j !== st.x && j !== st.y);
+  const C = m.b[0] + fixedJ.reduce((s, j) => s + Core.effect(m, j, st.fixed[j]), 0) + px.a0 + py.a0;
+  const parts = [[py.a2, vn(st.y) + '²'], [py.a1, vn(st.y)], [px.a2, vn(st.x) + '²'], [px.a1, vn(st.x)], [C, '']];
+  const body = parts.map(([v, n], i) => (i === 0 ? (v < 0 ? '−' : '') : (v < 0 ? ' − ' : ' + ')) + fsig(v) + (n ? '·' + n : '')).join('');
+  const lg = S.responses[st.resp].log, rn = S.responses[st.resp].name, lhs = lg ? `ln(${rn})` : rn;
+  $('s7formula').textContent = `${lhs} = ${body}` + (lg ? `\n${rn} = e^(${T('fAbove')})` : '');
+  const pt = st.fixed.slice(), xv = pickX ? pickX[st.x] : st.fixed[st.x], yv = pickX ? pickX[st.y] : st.fixed[st.y]; pt[st.x] = xv; pt[st.y] = yv;
+  const tv = Core.predictT(m, pt);
+  $('s7formulaNote').textContent = T('fNote', fixedJ.map(j => `${S.factors[j].name} = ${st.fixed[j]}`).join(T('sep')), S.factors[st.x].name, xv, S.factors[st.y].name, yv, lg ? T('fLnRes', fmt(tv, 4), fmt(Math.exp(tv), 2)) : fmt(tv, 2));
+}
+function explainPoint() {
+  const st = S.s7, m = M[st.resp]; if (!m || m.error || st.x === st.y) return;
+  const i = s7sel ?? S.X.findIndex(x => [0, 1, 2, 3].some(j => j !== st.x && j !== st.y && Math.abs(x[j] - st.fixed[j]) > 1e-9));
+  if (i < 0) { $('s7calc').textContent = ''; return; }
+  const lg = S.responses[st.resp].log, a = Core.adjustedPoint(m, S.X, i, st.fixed, st.x, st.y);
+  const own = Core.breakdown(m, S.X[i]), sl = Core.breakdown(m, a.xs);
+  const f = v => fmt(v, 4), ln = lg ? T('epLn') : '', col = T('colon');
+  let t = `${T('epHead', S.ids[i])}\n${T('epOwn')}${S.X[i].map((v, j) => `${S.factors[j].name} ${v}`).join(' / ')}\n${T('epSlice')}${a.xs.map((v, j) => `${S.factors[j].name} ${v}`).join(' / ')}\n\n`;
+  t += `${T('ep1')}${ln}${col}${f(own.b0)} ${own.terms.map(x => sgn(x.g)).join(' ')} = ${f(own.sumT)}\n`;
+  t += `${T('ep2')}${ln} = ${lg ? `ln(${fmt(S.Y[st.resp][i], 2)}) = ${f(Math.log(S.Y[st.resp][i]))}` : fmt(S.Y[st.resp][i], 2)} − ${f(own.sumT)} = ${f(m.residT[i])}\n`;
+  t += `${T('ep3')}${ln}${col}${f(sl.b0)} ${sl.terms.map(x => sgn(x.g)).join(' ')} = ${f(sl.sumT)}\n`;
+  t += `${T('ep4')} = ${f(sl.sumT)} ${sgn(m.residT[i])} = ${f(sl.sumT + m.residT[i])}${lg ? `   → e^${f(sl.sumT + m.residT[i])} = ${fmt(a.value, 3)}` : ''}\n`;
+  t += `\n${T('epOnly', [0, 1, 2, 3].filter(j => j !== st.x && j !== st.y).map(j => S.factors[j].name).join(T('andSep')))}`;
+  $('s7calc').textContent = t;
+}
+
+/* ---------- Step 8 ---------- */
+function screeningBest() {
+  const items = S.responses.map((r, k) => ({ k, w: S.weights[k] || 0, sign: r.dir === 'max' ? 1 : -1 })).filter(it => it.w > 0);
+  return items.length ? Core.screening(S.X, S.Y, items).best : [0, 1, 2, 3].map(j => levelsOf(j)[0]);
+}
+function renderS8() {
+  if (!S.val) S.val = { touched: false, cond: [pickX ? pickX.slice() : [0, 1, 2, 3].map(j => levelsOf(j)[0]), screeningBest()], meas: [S.responses.map(() => ''), S.responses.map(() => '')] };
+  if (!S.val.touched) { if (pickX) S.val.cond[0] = pickX.slice(); S.val.cond[1] = screeningBest(); }
+  const V = S.val;
+  while (V.meas[0].length < S.responses.length) { V.meas[0].push(''); V.meas[1].push(''); }
+  const names = [T('vBest'), T('vRef')];
+  $('tblVcond').innerHTML = `<tr><th>${T('thCond')}</th>` + [0, 1, 2, 3].map(j => `<th>${esc(fname(j))}</th>`).join('') + '</tr>' + V.cond.map((c, n) => `<tr><td>${names[n]}${n === 0 ? ` <button id="vUseOpt">${T('vUseOpt')}</button>` : ''}</td>` + c.map((v, j) => `<td><input type="number" id="vc${n}_${j}" step="any" value="${v}" aria-label="${esc(names[n] + ' ' + fname(j))}"></td>`).join('') + '</tr>').join('');
+  V.cond.forEach((c, n) => c.forEach((_, j) => $(`vc${n}_${j}`).onchange = e => { const v = parseFloat(e.target.value); if (isFinite(v)) { c[j] = v; V.touched = true; save(); renderS8(); } }));
+  $('vUseOpt').onclick = () => { if (pickX) { V.cond[0] = pickX.slice(); V.touched = true; save(); renderS8(); } };
+  let h = `<tr><th>${T('thResp')}</th><th>${T('thBP')}</th><th>${T('thBM')}</th><th>${T('thRP')}</th><th>${T('thRM')}</th><th>${T('thDP')}</th><th>${T('thDM')}</th><th>${T('thLooRmse')}</th><th>${T('thVerdict')}</th></tr>`;
+  S.responses.forEach((r, k) => {
+    const m = M[k]; if (!m || m.error) return;
+    const p0 = Core.predict(m, V.cond[0]), p1 = Core.predict(m, V.cond[1]);
+    const v0 = parseFloat(V.meas[0][k]), v1 = parseFloat(V.meas[1][k]);
+    const dP = p0 - p1, dM = (isFinite(v0) && isFinite(v1)) ? v0 - v1 : NaN;
+    const tol = 2 * m.rmseLoo * Math.SQRT2;
+    let judge = `<span class="muted">${T('jWait')}</span>`;
+    if (isFinite(dM)) judge = Math.abs(dM - dP) <= tol ? `<span class="pill good">${T('jDiffOk')}</span>` : `<span class="pill warn">${T('jDiffBad')}</span>`;
+    else if (isFinite(v0)) judge = Math.abs(v0 - p0) <= 2 * m.rmseLoo ? `<span class="pill good">${T('jAbsOk')}</span>` : `<span class="pill warn">${T('jAbsBad')}</span>`;
+    h += `<tr><td>${esc(rname(k))}</td><td class="num">${fmt(p0, 2)}</td><td><input type="number" id="vm0_${k}" class="sm" step="any" value="${V.meas[0][k]}" aria-label="${T('ariaVB')}"></td><td class="num">${fmt(p1, 2)}</td><td><input type="number" id="vm1_${k}" class="sm" step="any" value="${V.meas[1][k]}" aria-label="${T('ariaVR')}"></td><td class="num">${pm(dP)}</td><td class="num">${isFinite(dM) ? pm(dM) : '—'}</td><td class="num">${fmt(m.rmseLoo, 2)}</td><td>${judge}</td></tr>`;
+  });
+  $('tblVal').innerHTML = h;
+  S.responses.forEach((r, k) => [0, 1].forEach(n => { const el = $(`vm${n}_${k}`); if (el) el.onchange = e => { V.meas[n][k] = e.target.value; save(); renderS8(); }; }));
+  $('s8out').innerHTML = `<p class="note">${T('s8note')}</p>`;
+}
+
+/* ---------- 匯出 ---------- */
+function exportText() {
+  const L = [];
+  L.push(T('exData')); L.push([T('thRun'), ...S.factors.map((_, j) => fname(j)), ...S.responses.map((_, k) => rname(k))].join('\t'));
+  S.ids.forEach((id, i) => L.push([id, ...S.X[i], ...S.Y.map(y => y[i])].join('\t')));
+  L.push(''); L.push(T('exModels')); L.push([T('thResp'), T('thModel'), 'R2', 'R2pred', 'RMSE', 'RMSE_LOO', 'b0', ...[0, 1, 2, 3].flatMap(j => [`b1_${S.factors[j].name}`, `b2_${S.factors[j].name}`])].join('\t'));
+  S.responses.forEach((r, k) => { const m = M[k]; if (!m || m.error) return; L.push([rname(k), r.log ? 'ln' : 'linear', fmt(m.R2, 4), fmt(m.R2pred, 4), fmt(m.rmse, 4), fmt(m.rmseLoo, 4), fmt(m.b[0], 6), ...[0, 1, 2, 3].flatMap(j => [fmt(m.b[1 + j], 6), fmt(m.b[5 + j], 6)])].join('\t')); });
+  if (paretoRes) {
+    const p = paretoRes.front[pickIdx];
+    L.push(''); L.push(T('exOpt', S.objDir, rname(S.obj), rname(S.con), S.conOp === 'le' ? '≤' : '≥'));
+    L.push([T('exPick'), ...p.x].join('\t'));
+    S.responses.forEach((r, k) => { const m = M[k]; if (m && !m.error) L.push([rname(k), fmt(Core.predict(m, p.x), 3)].join('\t')); });
+  }
+  return L.join('\n');
+}
+
+/* ---------- 語言切換 ---------- */
+function setLang(l) {
+  if (l === LANG) return;
+  LANG = l;
+  try { __LS.setItem(LANG_KEY, l); } catch (e) { }
+  applyStatic(); localizeNames(); save();
+  $('pasteMsg').textContent = ''; $('copyMsg').textContent = '';
+  if ($('exportArea').value) $('exportArea').value = exportText();
+  renderAll();
+  if (paretoRes) { renderFrontTable(); $('paretoMsg').textContent = paretoDoneMsg(); }
+}
+
+/* ---------- 主流程 ---------- */
+function renderAll() { $('s6res').hidden = !paretoRes; renderStatus(); renderFactors(); renderResponses(); renderData(); renderS2(); renderS3(); renderS4(); renderS5(); renderS6Controls(); if (paretoRes) { renderParetoPlot(); renderPick(); } renderS7(); renderS8(); }
+function bind() {
+  $('langZh').onclick = () => setLang('zh');
+  $('langEn').onclick = () => setLang('en');
+  $('btnLoadExample').onclick = () => { S = fromExample(); paretoRes = null; pickX = null; s4x = null; refit(); save(); renderAll(); runPareto(); };
+  $('btnApplyPaste').onclick = () => { try { S = parsePaste($('pasteArea').value); paretoRes = null; pickX = null; s4x = null; s2k = s3k = s4k = 0; refit(); save(); renderAll(); $('pasteMsg').textContent = T('pasteOk', S.X.length, S.responses.length); $('paretoMsg').textContent = ''; $('s6res').hidden = true; } catch (e) { $('pasteMsg').textContent = T('pasteFail') + e.message; } };
+  $('s2resp').onchange = e => { s2k = +e.target.value; renderS2(); };
+  $('s3resp').onchange = e => { s3k = +e.target.value; renderS3(); };
+  $('s4resp').onchange = e => { s4k = +e.target.value; renderS4(); };
+  $('s6obj').onchange = e => { S.obj = +e.target.value; S.objDir = S.responses[S.obj].dir; save(); renderS6Controls(); };
+  $('s6con').onchange = e => { S.con = +e.target.value; S.conOp = S.responses[S.con].dir === 'min' ? 'le' : 'ge'; save(); renderS6Controls(); };
+  $('s6objDir').onchange = e => { S.objDir = e.target.value; save(); };
+  $('s6conOp').onchange = e => { S.conOp = e.target.value; save(); };
+  $('btnAddExtra').onclick = () => { S.extra.push({ k: 0, op: 'ge', val: 0 }); save(); renderExtra(); };
+  $('btnPareto').onclick = runPareto;
+  $('epsSlider').oninput = e => { pickIdx = +e.target.value; pickX = paretoRes.front[pickIdx].x.slice(); renderParetoPlot(); renderPick(); };
+  $('epsSlider').onchange = () => { S.s7.fixed = pickX.slice(); renderS7(); };
+  $('btnKnee').onclick = () => { pickIdx = paretoRes.kneeIdx; $('epsSlider').value = pickIdx; pickX = paretoRes.front[pickIdx].x.slice(); renderParetoPlot(); renderPick(); S.s7.fixed = pickX.slice(); renderS7(); };
+  $('s7resp').onchange = e => { S.s7.resp = +e.target.value; s7sel = null; save(); drawContour(); };
+  $('s7x').onchange = e => { S.s7.x = +e.target.value; s7sel = null; save(); renderS7(); };
+  $('s7y').onchange = e => { S.s7.y = +e.target.value; s7sel = null; save(); renderS7(); };
+  $('btnUseOpt').onclick = () => { if (pickX) { S.s7.fixed = pickX.slice(); s7sel = null; save(); renderS7(); } };
+  $('btnExport').onclick = () => { $('exportArea').value = exportText(); };
+  $('btnCopy').onclick = () => {
+    const ta = $('exportArea'); if (!ta.value) ta.value = exportText();
+    const done = () => $('copyMsg').textContent = T('copied');
+    const manual = () => { ta.select(); $('copyMsg').textContent = T('copyManual'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, manual);
+    else manual();
+  };
+  const rerenderCharts = () => { renderS2(); renderS3(); if (paretoRes) renderParetoPlot(); drawContour(); };
+  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rerenderCharts); } catch (e) { }
+  new MutationObserver(rerenderCharts).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+}
+function start() {
+  S = load() || fromExample();
+  if (S.source) S.source = 'example';
+  localizeNames();
+  refit(); bind(); renderAll();
+  if (!window.Plotly) document.querySelectorAll('.plot').forEach(el => { el.innerHTML = `<p class="note">${T('noPlotly')}</p>`; el.style.minHeight = '0'; });
+  runPareto();
+}
+start();
+})();
+</script>
+
+</body></html>

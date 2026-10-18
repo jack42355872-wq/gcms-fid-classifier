@@ -222,6 +222,29 @@
       transition: background 0.2s;
     }
     #download-btn:hover { background: #2f855a; }
+    #asf-btn {
+      display: none;
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      background: white;
+      color: #2b6cb0;
+      border: 1.5px solid #2b6cb0;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #asf-btn:hover { background: #ebf4ff; }
+    #suite-link {
+      display: none;
+      margin: -6px 0 18px;
+      font-size: 0.85rem;
+      color: #4a5568;
+      text-align: center;
+    }
+    #suite-link a { color: #2b6cb0; font-weight: 600; }
     #error-box {
       display: none;
       margin-top: 16px;
@@ -340,6 +363,12 @@
     上傳 Shimadzu GC-MS 輸出的 xlsx，自動分類並加總 C8-16 成分；活頁簿內多個工作表會自動逐一偵測分類
   </p>
 
+  <p id="suite-link">
+    <span data-zh="這是單獨開啟的 FID 分類頁，其餘五個分析工具（反應器記錄、GC-TCD、液相 ASF、層析圖排版、L16 最佳化）在"
+          data-en="This is the standalone FID classifier; the other five tools (reactor log, GC-TCD, liquid-phase ASF, chromatogram grid, L16 optimizer) are in the">這是單獨開啟的 FID 分類頁，其餘五個分析工具（反應器記錄、GC-TCD、液相 ASF、層析圖排版、L16 最佳化）在</span>
+    <a href="/" data-zh="完整工作區 →" data-en="full workspace →">完整工作區 →</a>
+  </p>
+
   <div class="card">
     <div id="drop-zone">
       <div class="icon">📂</div>
@@ -448,6 +477,11 @@
             data-zh="⬇️ 下載分類完成的 xlsx（含驗證報告）"
             data-en="⬇️ Download classified xlsx (with validation report)">
       ⬇️ 下載分類完成的 xlsx（含驗證報告）
+    </button>
+    <button id="asf-btn"
+            data-zh="📈 用同一份檔案做液相 ASF 分析（碳數分布、α）→"
+            data-en="📈 Open this file in liquid-phase ASF analysis (carbon distribution, α) →">
+      📈 用同一份檔案做液相 ASF 分析（碳數分布、α）→
     </button>
   </div>
 
@@ -943,6 +977,20 @@
       setTimeout(function() { clearInterval(poll); }, 30000);
     });
 
+    // 在工作區外殼裡（同源 iframe）才有「送到 ASF」；單獨開 /fid 時改顯示工作區連結
+    function suiteHost() {
+      try { return window.parent !== window && window.parent.__SUITE && window.parent.__SUITE.openWith ? window.parent.__SUITE : null; }
+      catch (e) { return null; }
+    }
+    function showHandoff(on) {
+      document.getElementById('asf-btn').style.display = on && suiteHost() ? 'block' : 'none';
+    }
+    if (window.top === window.self) document.getElementById('suite-link').style.display = 'block';
+    document.getElementById('asf-btn').addEventListener('click', function() {
+      var host = suiteHost();
+      if (host && selectedFile) host.openWith('asf', [selectedFile]);
+    });
+
     window.setFile = function(file) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) {
         showError(i18n[currentLang].errorFormat);
@@ -955,6 +1003,7 @@
       document.getElementById('process-btn').style.display = 'block';
       document.getElementById('report').style.display      = 'none';
       document.getElementById('download-btn').style.display = 'none';
+      showHandoff(false);
       document.getElementById('error-box').style.display   = 'none';
     };
 
@@ -1126,6 +1175,7 @@
       document.getElementById('report').style.display       = 'none';
       document.getElementById('error-box').style.display    = 'none';
       document.getElementById('download-btn').style.display = 'none';
+      showHandoff(false);
 
       var formData = new FormData();
       formData.append('file', selectedFile);
@@ -1165,6 +1215,7 @@
           document.getElementById('progress').style.display = 'none';
           document.getElementById('process-btn').disabled = false;
           document.getElementById('download-btn').style.display = 'block';
+          showHandoff(true);
 
           return res.blob();
         })

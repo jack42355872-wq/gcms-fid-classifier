@@ -12,7 +12,7 @@ import time
 import base64
 import ctypes
 import pandas as pd
-from flask import Flask, request, send_file, render_template, jsonify
+from flask import Flask, request, send_file, render_template, jsonify, send_from_directory
 from werkzeug.exceptions import HTTPException
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
@@ -1522,6 +1522,15 @@ def _handle_unexpected(e):
 
 @app.route('/')
 def index():
+    # 工作區外殼：FID 分類 + 學長的五個分析工具，放在同一排分頁裡（各自是獨立頁面，用 iframe 保活）。
+    resp = send_from_directory(app.static_folder, 'suite/shell.html')
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
+
+
+@app.route('/fid')
+def fid():
+    # 原本的 FID 分類頁；外殼的第一個分頁就是它，單獨開 /fid 也能用。
     return render_template('index.html')
 
 

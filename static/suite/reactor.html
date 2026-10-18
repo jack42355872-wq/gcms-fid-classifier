@@ -1,0 +1,1036 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><script src="bridge.js"></script><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body><title>反應器記錄分段工具</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: lab tool. Drop bar → run overview → detail + segment editor → segment × signal matrix → sticky export bar. */
+:root{
+  --bg:#f3f5f4; --panel:#ffffff; --ink:#17201c; --ink-2:#4d5a55; --muted:#76827d; --rule:#d8dfdb; --rule-2:#bcc7c2;
+  --trace:#2a78d6; --band:rgba(42,120,214,.20); --hover:#eef2f0; --drop:#e6f0fb; --fix:#8a3ffc; --selr:rgba(138,63,252,.12);
+  --steady:#2f7d3e; --steady-bg:#e2f0e4; --proc:#2b6aa8; --proc-bg:#e1ecf8; --op:#9a520f; --op-bg:#fbe9d8; --inv:#5d6662; --inv-bg:#e6e9e7;
+  --font-ui:"IBM Plex Sans","PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111614; --panel:#19201d; --ink:#e6ece9; --ink-2:#b3beb9; --muted:#85918c; --rule:#2b3430; --rule-2:#3f4a45;
+  --trace:#5b9cf0; --band:rgba(91,156,240,.24); --hover:#212925; --drop:#1b2a3a; --fix:#c3a4ff; --selr:rgba(195,164,255,.16);
+  --steady:#86cf93; --steady-bg:#1d3122; --proc:#8ab8ec; --proc-bg:#1b293a; --op:#f0a865; --op-bg:#3a2715; --inv:#a6afab; --inv-bg:#262d2a;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111614; --panel:#19201d; --ink:#e6ece9; --ink-2:#b3beb9; --muted:#85918c; --rule:#2b3430; --rule-2:#3f4a45;
+  --trace:#5b9cf0; --band:rgba(91,156,240,.24); --hover:#212925; --drop:#1b2a3a; --fix:#c3a4ff; --selr:rgba(195,164,255,.16);
+  --steady:#86cf93; --steady-bg:#1d3122; --proc:#8ab8ec; --proc-bg:#1b293a; --op:#f0a865; --op-bg:#3a2715; --inv:#a6afab; --inv-bg:#262d2a;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:20px;padding-block:20px 0}
+h1{font-size:22px;font-weight:600;margin:0;text-wrap:balance}
+h2{font-size:15px;font-weight:600;margin:0}
+.sub{color:var(--ink-2);margin:4px 0 0;font-size:13px}
+.mono{font-family:var(--font-data);font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;font-size:12px;font-weight:500;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.t-steady{color:var(--steady);background:var(--steady-bg)} .t-process{color:var(--proc);background:var(--proc-bg)}
+.t-op{color:var(--op);background:var(--op-bg)} .t-invalid{color:var(--inv);background:var(--inv-bg)}
+button,input,select{font:inherit;color:inherit}
+input[type=text],input[type=number],select{background:var(--panel);border:1px solid var(--rule-2);border-radius:6px;padding:4px 8px;font-size:13px;min-width:0}
+.btn{border:1px solid var(--rule-2);background:var(--panel);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;white-space:nowrap}
+.btn:hover{background:var(--hover)} .btn:focus-visible,.cell:focus-visible,.chip:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--trace);outline-offset:2px}
+.btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);font-weight:500}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 16px}
+.dropbar{margin-top:16px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;border:1.5px dashed var(--rule-2);border-radius:10px;padding:14px 16px;background:var(--panel)}
+.dropbar.over{border-color:var(--trace);background:var(--drop)}
+.dropbar .big{font-size:15px;font-weight:500}
+.fileinfo{font-size:12.5px;color:var(--ink-2)}
+.fileinfo b{color:var(--ink);font-weight:500}
+.sample{font-size:12px;color:var(--op);font-weight:500}
+details.settings{margin-top:10px}
+details.settings summary{cursor:pointer;font-size:13px;color:var(--ink-2);padding:4px 0}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 20px;margin-top:8px}
+.setgrid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ink-2)}
+.setgrid .hint{font-size:11.5px;color:var(--muted)}
+.colpick{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+.colpick label{display:flex;gap:5px;align-items:center;cursor:pointer;color:var(--ink)}
+.overview{margin-top:16px}
+.ovbox{position:relative;height:250px;margin-top:6px}
+.ovbox canvas,.chartbox canvas{position:absolute;inset:0;width:100%;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.detail{margin-top:16px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}
+.dtitle{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:16px;font-weight:600}
+.dmeta{color:var(--ink-2);font-size:12.5px;margin-top:2px}
+.stats{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--ink-2);margin-top:6px}
+.stats b{color:var(--ink);font-weight:500}
+.sigtabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chartbox{position:relative;height:290px;margin-top:8px;cursor:crosshair}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--panel);font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-115%);z-index:3}
+.editor{display:flex;flex-direction:column;gap:10px;border-left:1px solid var(--rule);padding-left:16px}
+.editor label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ink-2)}
+.editor .row{display:flex;flex-wrap:wrap;gap:8px}
+.editor .why{font-size:12px;color:var(--muted)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0 10px}
+.chip{border:1px solid var(--rule-2);background:transparent;border-radius:999px;padding:3px 12px;font-size:13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.chip .n{opacity:.7;margin-left:4px}
+.spacer{flex:1}
+.mwrap{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--panel)}
+.matrix{display:grid}
+.ch{position:sticky;top:env(safe-area-inset-top,0px);z-index:2;background:var(--panel);border-bottom:1px solid var(--rule);padding:8px 10px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.ch label{display:flex;align-items:center;gap:6px;cursor:pointer;min-width:0}
+.ch .hint{font-weight:400;color:var(--muted);font-size:12px}
+.rh{border-bottom:1px solid var(--rule);padding:10px 10px 10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0;cursor:pointer}
+.rh.focus{background:var(--hover)}
+.rh .top{display:flex;align-items:center;gap:8px}
+.rh label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.segid{font-family:var(--font-data);font-weight:500;font-size:15px}
+.rh .lbl{font-size:13px;font-weight:500;overflow-wrap:anywhere}
+.rh .meta{font-size:12px;color:var(--ink-2)}
+.rh .op{font-size:12px;color:var(--op);overflow-wrap:anywhere}
+.cell{border-bottom:1px solid var(--rule);border-left:1px solid var(--rule);padding:8px 8px 6px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0;background:var(--panel)}
+.cell:hover{background:var(--hover)}
+.cell[aria-checked="true"]{box-shadow:inset 0 0 0 2px var(--ink);background:var(--hover)}
+.ctop{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:12px;color:var(--ink-2)}
+.box{width:16px;height:16px;border:1.5px solid var(--rule-2);border-radius:4px;display:inline-grid;place-items:center;flex:none}
+.cell[aria-checked="true"] .box{background:var(--ink);border-color:var(--ink)}
+.cell[aria-checked="true"] .box::after{content:"";width:8px;height:4px;border:2px solid var(--panel);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.zoom{border:0;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;padding:0 2px;text-decoration:underline;text-underline-offset:2px}
+.zoom:hover{color:var(--ink)}
+.cell.focus .zoom{color:var(--trace);font-weight:500;text-decoration:none}
+.mini{position:relative;height:124px}
+.mini canvas{position:absolute;inset:0;width:100%;height:100%}
+.vline{position:absolute;width:1px;background:var(--ink-2);pointer-events:none}
+.cfoot{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--muted);min-height:16px}
+.notes{color:var(--muted);font-size:12px;margin:10px 2px 0}
+.exportbar{position:sticky;bottom:env(safe-area-inset-bottom,0px);z-index:5;margin-top:16px;background:var(--panel);border-top:1px solid var(--rule);box-shadow:0 -4px 14px rgba(0,0,0,.06)}
+.exportbar .in{max-width:1320px;margin:0 auto;padding:10px 20px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.selsum{font-size:13px} .selsum b{font-weight:600}
+.seg2{display:inline-flex;border:1px solid var(--rule-2);border-radius:6px;overflow:hidden}
+.seg2{flex-wrap:wrap}
+.seg2 label{padding:4px 10px;font-size:13px;cursor:pointer}
+.seg2 input{position:absolute;opacity:0;pointer-events:none}
+.seg2 label:has(input:checked){background:var(--ink);color:var(--panel);font-weight:500}
+.seg2 label:has(input:focus-visible){outline:2px solid var(--trace);outline-offset:-2px}
+.status{font-size:12.5px;color:var(--ink-2);flex-basis:100%}
+.dlstate{font-size:12.5px;color:var(--op)}
+.status.err,.err{color:var(--op)}
+.repair{margin-top:16px}
+.rtop{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:14px 28px;margin-top:10px}
+.rcol{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:13px}
+.rlabel{font-size:12.5px;color:var(--ink-2);font-weight:500}
+.inl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;cursor:pointer}
+.sub2{font-size:12px;color:var(--ink-2);padding-left:22px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+input.sm{width:64px;padding:2px 6px}
+.row2{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.row2 label{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mdesc{font-size:12px;color:var(--ink-2);margin:0;min-height:2.6em}
+.rintro{font-size:13px;color:var(--ink-2);margin:6px 0 0}
+.sub2.muted{color:var(--muted)}
+.row2 .sub2{padding-left:0;margin-top:-2px}
+.ractions{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)}
+.ractions label{display:flex;gap:6px;align-items:center;font-size:13px}
+.rsum{font-size:12.5px;color:var(--ink-2);flex-basis:100%}
+.rsum b{color:var(--ink);font-weight:500}
+.methods{flex-wrap:wrap}
+@media (max-width:820px){.detail{grid-template-columns:minmax(0,1fr)}.editor{border-left:0;padding-left:0;border-top:1px solid var(--rule);padding-top:12px}}
+@media (max-width:640px){.wrap{padding-inline:16px}.exportbar .in{padding-inline:16px}.chartbox{height:230px}.ovbox{height:210px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>反應器記錄分段工具</h1>
+    <p class="sub">把記錄器輸出的 CSV 拖進來：自動找出操作事件、凍結與穩態段，修補錯誤碼、即跳點與時間斷點，確認分段後勾選需要的圖匯出 Excel。檔案只在你的瀏覽器裡處理，不會上傳。</p>
+  </header>
+
+  <div class="dropbar" id="dropbar">
+    <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 320px">
+      <span class="big">把 CSV 拖到這裡</span>
+      <span class="fileinfo" id="fileinfo">載入中…</span>
+    </div>
+    <label class="btn" for="fileIn">選擇檔案</label>
+    <input type="file" id="fileIn" accept=".csv,.txt,text/csv" hidden>
+    <div class="status" id="loadStatus" hidden></div>
+  </div>
+
+  <details class="settings card" id="settings">
+    <summary>欄位與分段參數</summary>
+    <label class="inl" style="margin-top:8px"><input type="checkbox" id="regIn" checked>載入時補齊缺少的時間點（依取樣間隔插入空白列，之後可以用「數據修補」補值）</label>
+    <div style="margin-top:8px">
+      <div style="font-size:12.5px;color:var(--ink-2);margin-bottom:4px">矩陣要顯示的訊號</div>
+      <div class="colpick" id="colpick"></div>
+    </div>
+    <div class="setgrid">
+      <label>分段依據訊號 1<select id="segH"></select></label>
+      <label>分段依據訊號 2<select id="segC"></select></label>
+      <label>事件門檻 (% / 6 min)<input type="number" id="pTheta" step="0.1" min="0.1" value="0.5"><span class="hint">每分鐘中位數 6 分鐘內變化超過此值視為不穩</span></label>
+      <label>邊界容差 (%)<input type="number" id="pTol" step="0.1" min="0.1" value="0.6"><span class="hint">偏離事件前後趨勢超過此值才算事件內</span></label>
+      <label>穩態漂移上限 (%/h)<input type="number" id="pDrift" step="0.05" min="0.01" value="0.15"><span class="hint">兩個分段訊號的斜率都要小於此值</span></label>
+      <label>最短穩態 (min)<input type="number" id="pMin" step="5" min="5" value="30"></label>
+      <label>錯誤碼門檻<input type="number" id="pDrop" step="1" value="-5"><span class="hint">數值 ≤ 此值視為跳點，不畫、不納入統計</span></label>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px">
+      <button class="btn" type="button" id="reseg">重新自動分段</button>
+      <span class="hint" style="font-size:12px;color:var(--muted)">會覆蓋目前的手動修改</span>
+    </div>
+  </details>
+
+  <section class="card overview" aria-label="全程總覽">
+    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between">
+      <h2>全程總覽</h2>
+      <div class="legend"><span><i style="background:var(--steady-bg);border:1px solid var(--steady)"></i>穩態</span><span><i style="background:var(--proc-bg);border:1px solid var(--proc)"></i>製程暫態</span><span><i style="background:var(--op-bg);border:1px solid var(--op)"></i>操作事件</span><span><i style="background:var(--inv-bg);border:1px solid var(--inv)"></i>無效</span></div>
+    </div>
+    <div class="ovbox" id="ovBox"><canvas id="ovCanvas" role="img" aria-label="全程兩個分段訊號與分段底色"></canvas><canvas id="ovOver" aria-hidden="true"></canvas><div class="tip" id="ovTip" hidden></div></div>
+    <p class="notes" style="margin-top:6px">點圖上任一段可在下方放大與編輯。</p>
+  </section>
+
+  <section class="card detail" aria-label="放大與編輯">
+    <div style="min-width:0">
+      <div class="dtitle"><span id="dTitle">—</span><span id="dPill" class="pill"></span></div>
+      <div class="dmeta" id="dMeta"></div>
+      <div class="sigtabs" id="sigTabs" role="tablist" aria-label="訊號"></div>
+      <div class="stats mono" id="dStats"></div>
+      <div class="chartbox" id="dBox"><canvas id="dCanvas" role="img" aria-label="放大的時間序列圖"></canvas><canvas id="dOver" aria-hidden="true"></canvas><div class="tip" id="dTip" hidden></div></div>
+    </div>
+    <div class="editor">
+      <h2>這一段</h2>
+      <label>分類<select id="eType"><option>穩態</option><option>製程暫態</option><option>操作事件</option><option>無效</option></select></label>
+      <label>名稱<input type="text" id="eLabel" maxlength="40"></label>
+      <label>實際操作<input type="text" id="eOp" maxlength="60" placeholder="球閥開關 + 樣本採集"></label>
+      <div class="why" id="eWhy"></div>
+      <div class="row">
+        <button class="btn" type="button" id="eMergePrev">合併到上一段</button>
+        <button class="btn" type="button" id="eMergeNext">合併到下一段</button>
+      </div>
+      <div class="row">
+        <button class="btn" type="button" id="eSplit" disabled>在圖上點一下選切分點</button>
+      </div>
+      <div class="row"><button class="btn" type="button" id="dToggle">選取這張圖</button></div>
+    </div>
+  </section>
+
+  <section class="card repair" aria-label="數據修補">
+    <div class="rtop"><h2>數據修補</h2><label class="inl"><input type="checkbox" id="useFix" checked>圖表、統計和匯出都用修補後的數據</label></div>
+    <p class="rintro">步驟：① 決定哪些點算不正常 → ② 選怎麼補 → ③ 選範圍，按「偵測並修補」。之後改任何設定都會自動重算並更新圖。放大圖裡紫色是補上的值，灰色是原始值。</p>
+    <div class="rgrid">
+      <div class="rcol">
+        <div class="rlabel">① 哪些點算不正常</div>
+        <label class="inl"><input type="checkbox" id="dCode" checked>儀器錯誤值：數值 ≤ <input type="number" id="rDrop" value="-5" step="0.5" class="sm"> 的點</label>
+        <div class="sub2">分析儀出錯時會輸出 -10.5、-22 這種不可能的濃度。還原期的 CO 出錯時會卡在 -1.0 左右，修那幾段時把這格改成 0。</div>
+        <label class="inl"><input type="checkbox" id="dExt" checked>錯誤值前後各再多修 <input type="number" id="extN" value="1" min="0" max="10" class="sm"> 筆</label>
+        <div class="sub2">儀器剛出錯或剛恢復的那一兩秒，讀值常落在中間（例如 30 → 9 → -10），也一起當成不正常。</div>
+        <label class="inl"><input type="checkbox" id="dGap" checked>沒記錄到的時間點</label>
+        <div class="sub2">記錄器偶爾漏存幾秒，載入時已經補成空白列，這裡會幫它們補上數值。</div>
+        <label class="inl"><input type="checkbox" id="dSpike" checked>突然跳一下又回來的點（即跳點）</label>
+        <div class="sub2">拿這個點跟前後各 <input id="hWin" type="number" value="15" min="3" class="sm"> 秒的數據比。偏離超過「正常抖動」的 <input id="hK" type="number" value="5" step="0.5" min="1" class="sm"> 倍，而且至少偏 <input id="hMin" type="number" value="0.5" step="0.1" min="0" class="sm">（跟數據同單位），才算跳點。</div>
+        <div class="sub2 muted">「正常抖動」是那段時間數值的典型起伏。H2、CO、CO2 的讀值很穩、幾乎不抖，所以實際上是看「至少偏 0.5」；CO2(CAP) 抖動約 ±0.3，門檻約 1.4。前後兩邊都要往同一邊偏才算，所以換氣、改流量這種上去就不下來的變化不會被當成跳點。</div>
+        <div class="rlabel" style="margin-top:8px">手動標記（自動抓不到時用）</div>
+        <div class="sub2">在上方放大圖上按住滑鼠拖曳框選一段，再按「把框選範圍標為不合理」；或把目前這一段整段標掉（例如採樣造成的下降）。</div>
+        <div class="row" style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" id="mMark" class="btn" disabled>把框選範圍標為不合理</button><button type="button" id="mSeg" class="btn">整段標為不合理</button><button type="button" id="mClear" class="btn">清除這個訊號的手動標記</button></div>
+      </div>
+      <div class="rcol">
+        <div class="rlabel">② 怎麼補</div>
+        <div class="seg2 methods" role="radiogroup" aria-label="補值方法">
+          <label><input type="radio" name="fm" value="linear" checked><span>線性</span></label>
+          <label><input type="radio" name="fm" value="exp"><span>指數</span></label>
+          <label><input type="radio" name="fm" value="poly"><span>多項式</span></label>
+          <label><input type="radio" name="fm" value="sine"><span>弦函數</span></label>
+          <label><input type="radio" name="fm" value="log"><span>對數</span></label>
+        </div>
+        <p class="mdesc" id="mDesc"></p>
+        <div class="row2">
+          <label>多項式階數 <select id="polyDeg"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+          <div class="sub2">只有選「多項式」時有用。階數越高曲線越彎；參考數據少時容易亂甩，一般 2–3 就夠。</div>
+          <label>參考斷點前後各 <input type="number" id="ctxW" value="60" min="5" class="sm"> 秒的正常數據</label>
+          <div class="sub2">線性以外的方法要用這些數據決定曲線形狀。太短，曲線不穩；太長，會被比較遠的變化帶走。</div>
+          <label class="inl"><input type="checkbox" id="align" checked>補上的曲線頭尾接到斷點前後的實際值</label>
+          <div class="sub2">不勾的話，擬合曲線在斷點兩頭可能跟實際值差一截，接縫處會跳一下。建議保持勾選。</div>
+          <label>自動找到的斷點超過 <input type="number" id="maxGap" value="300" min="1" class="sm"> 秒就不補</label>
+          <div class="sub2">太長的空白用猜的不可靠，會留空並記在修補紀錄。你手動標記的範圍不受這個限制。</div>
+          <div class="sub2 muted">補出來的曲線如果衝出斷點前後數據的範圍太多，那一段會自動改用線性，並記在修補紀錄。</div>
+        </div>
+      </div>
+    </div>
+    <div class="ractions">
+      <label>③ 套用範圍 <select id="rScope"><option value="seg">只修目前這段的這個訊號</option><option value="col" selected>這個訊號，整個檔案</option><option value="all">所有顯示中的訊號，整個檔案</option></select></label>
+      <button class="btn" type="button" id="rApply">偵測並修補</button>
+      <button class="btn" type="button" id="rUndo">還原成原始數據</button>
+      <div class="rsum" id="rSum">尚未修補。</div>
+    </div>
+  </section>
+
+  <div class="toolbar" role="toolbar" aria-label="篩選與快速選取">
+    <div id="chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <span class="spacer"></span>
+    <button class="btn" id="selSteady" type="button">選取所有穩態段</button>
+    <button class="btn" id="selClear" type="button">清除選取</button>
+  </div>
+  <div class="mwrap"><div class="matrix" id="matrix" role="grid" aria-label="分段 × 訊號縮圖矩陣"></div></div>
+  <p class="notes">子圖的水平軸是時間（時:分），垂直軸是數值，每格各自縮放；紫色是修補過的點。下方「平均」會同時改變所有圖、統計值與匯出內容。</p>
+</div>
+
+<div class="exportbar">
+  <div class="in">
+    <div class="selsum" id="selSum">尚未選取</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span style="font-size:13px;color:var(--ink-2)">平均</span>
+    <div class="seg2" role="radiogroup" aria-label="平均時間">
+      <label><input type="radio" name="res" id="res1" value="1" checked><span>1 Hz 原始</span></label>
+      <label><input type="radio" name="res" value="10"><span>10 s</span></label>
+      <label><input type="radio" name="res" value="60"><span>60 s</span></label>
+      <label><input type="radio" name="res" value="120"><span>120 s</span></label>
+      <label><input type="radio" name="res" value="240"><span>240 s</span></label>
+      <label><input type="radio" name="res" value="600"><span>600 s</span></label>
+    </div></div>
+    <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="incImg" checked>附上圖片</label>
+    <span class="spacer"></span>
+    <span class="dlstate" id="dlState"></span>
+    <button class="btn primary" id="exportBtn" type="button">產生 Excel</button>
+    <button class="btn" id="dlBtn" type="button" hidden>下載 Excel</button>
+    <button class="btn" id="permBtn" type="button" hidden>開啟權限設定</button>
+    <div class="status" id="status" hidden></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+/* core: CSV parsing + auto segmentation. Pure functions, used by the page (worker + main thread) and node tests. */
+function coreFactory() {
+  const TIME_RE = /^\s*(\d{1,4})[\/\-.](\d{1,2})[\/\-.](\d{1,4})(?:[ T]+(上午|下午|AM|PM)?\s*(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*(AM|PM|上午|下午)?)?\s*$/i;
+  function parseTime(s) {
+    const m = TIME_RE.exec(s);
+    if (!m) return NaN;
+    let y, mo, d;
+    if (m[1].length === 4) { y = +m[1]; mo = +m[2]; d = +m[3]; } else { mo = +m[1]; d = +m[2]; y = +m[3]; if (y < 100) y += 2000; }
+    let h = m[5] ? +m[5] : 0; const mi = m[6] ? +m[6] : 0, se = m[7] ? +m[7] : 0;
+    const ap = (m[4] || m[8] || '').toUpperCase();
+    if (ap === 'PM' || ap === '下午') { if (h < 12) h += 12; } else if (ap === 'AM' || ap === '上午') { if (h === 12) h = 0; }
+    return Date.UTC(y, mo - 1, d, h, mi, se) / 1000;
+  }
+
+  function parseCSV(text) {
+    let p = 0; const N = text.length;
+    if (text.charCodeAt(0) === 0xfeff) p = 1;
+    let nl = text.indexOf('\n', p); if (nl < 0) nl = N;
+    const raw = text.slice(p, nl).replace(/\r$/, '').split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+    const seen = {}; const header = raw.map(h => { if (seen[h] === undefined) { seen[h] = 0; return h; } seen[h]++; return h + '.' + seen[h]; });
+    let tcol = header.findIndex(h => /^(times?|date ?time|時間)$/i.test(h)); if (tcol < 0) tcol = 0;
+    let est = 0; for (let i = nl; i < N; i = text.indexOf('\n', i + 1)) { if (i < 0) break; est++; }
+    const nc = header.length, t = new Float64Array(est), vals = header.map(() => new Float32Array(est)), numeric = header.map(() => true), seenVal = header.map(() => false);
+    let n = 0, bad = 0; p = nl + 1;
+    while (p < N) {
+      let e = text.indexOf('\n', p); if (e < 0) e = N;
+      let line = text.slice(p, e); p = e + 1;
+      if (line.endsWith('\r')) line = line.slice(0, -1);
+      if (!line.trim()) continue;
+      const parts = line.split(',');
+      const tv = parseTime((parts[tcol] || '').replace(/^"|"$/g, ''));
+      if (!Number.isFinite(tv)) { bad++; continue; }
+      t[n] = tv;
+      for (let c = 0; c < nc; c++) {
+        if (c === tcol) continue;
+        const s = parts[c];
+        const v = s === undefined || s === '' ? NaN : +s;
+        if (!seenVal[c] && s !== undefined && s.trim() !== '') { seenVal[c] = true; if (Number.isNaN(v)) numeric[c] = false; }
+        vals[c][n] = v;
+      }
+      n++;
+    }
+    const cols = {}, info = [];
+    header.forEach((h, c) => {
+      if (c === tcol || !numeric[c]) return;
+      const a = vals[c].slice(0, n); cols[h] = a;
+      let mn = Infinity, mx = -Infinity, s = 0, k = 0; const cnt = new Map();
+      for (let i = 0; i < n; i++) { const v = a[i]; if (!Number.isFinite(v)) continue; if (v < mn) mn = v; if (v > mx) mx = v; s += v; k++; if (cnt.size < 64) cnt.set(v, (cnt.get(v) || 0) + 1); }
+      let top = 0, topv = NaN; for (const [v, c2] of cnt) if (c2 > top) { top = c2; topv = v; }
+      const sentinel = [1370, 32767, 65535, -32768, 9999].some(x => Math.abs(topv - x) < 0.5) && top / Math.max(k, 1) > 0.9;
+      info.push({ name: h, min: mn, max: mx, mean: k ? s / k : NaN, constant: !(mx > mn), sentinel });
+    });
+    return { header, timeCol: header[tcol], t: t.slice(0, n), cols, info, n, bad };
+  }
+
+  function median(a) { const b = a.filter(Number.isFinite).sort((x, y) => x - y); const m = b.length; if (!m) return NaN; return m % 2 ? b[(m - 1) / 2] : (b[m / 2 - 1] + b[m / 2]) / 2; }
+  function slopePerHour(t, y, s, e) { let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0; const t0 = t[s];
+    for (let i = s; i < e; i++) { const v = y[i]; if (!Number.isFinite(v)) continue; const x = (t[i] - t0) / 3600; n++; sx += x; sy += v; sxx += x * x; sxy += x * v; }
+    const d = n * sxx - sx * sx; return n > 2 && d > 0 ? (n * sxy - sx * sy) / d : 0; }
+  function clean(a, drop) { const o = new Float64Array(a.length); for (let i = 0; i < a.length; i++) { const v = a[i]; o[i] = Number.isFinite(v) && v > drop ? v : NaN; } return o; }
+  function smooth5(a) { const n = a.length, o = new Float64Array(n), w = [];
+    for (let i = 0; i < n; i++) { w.length = 0; for (let k = Math.max(0, i - 2); k <= Math.min(n - 1, i + 2); k++) if (Number.isFinite(a[k])) w.push(a[k]); w.sort((x, y) => x - y); o[i] = w.length ? w[w.length >> 1] : NaN; } return o; }
+  function lowerBound(t, x) { let lo = 0, hi = t.length; while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; } return lo; }
+  function windowMedian(t, y, a, b) { const i0 = lowerBound(t, a), i1 = lowerBound(t, b); const w = []; for (let i = i0; i < i1; i++) if (Number.isFinite(y[i])) w.push(y[i]); return median(w); }
+
+  /* opt: {h, c, keys, drop, theta, devWin, ampThr, tol, drift, minSteady, minGap} */
+  function autoSegment(data, opt) {
+    const o = Object.assign({ drop: -5, theta: 0.5, ampThr: 1.0, tol: 0.6, drift: 0.15, minSteady: 30, frozenRun: 30 }, opt);
+    const t = data.t, n = t.length;
+    const H = clean(data.cols[o.h], o.drop), C = clean(data.cols[o.c], o.drop);
+    const keys = o.keys.filter(k => data.cols[k]).map(k => data.cols[k]);
+    // 1) invalid rows: all keys zero, or frozen (identical to previous row for >= frozenRun rows)
+    const inv = new Uint8Array(n);
+    // rows with no data at all (inserted time gaps) continue whatever run they sit in
+    for (let i = 0; i < n; i++) { let z = true, any0 = false; for (const a of keys) { const v = a[i]; if (v === 0) any0 = true; else if (v === v) { z = false; break; } }
+      if (z && (any0 || (i > 0 && inv[i - 1] === 1))) inv[i] = 1; }
+    let run = 0; const last = keys.map(a => a[0]);
+    for (let i = 1; i <= n; i++) {
+      let same = i < n;
+      if (same) for (let k = 0; k < keys.length; k++) { const v = keys[k][i]; if (v === v && v !== last[k]) { same = false; break; } }
+      if (i < n) for (let k = 0; k < keys.length; k++) { const v = keys[k][i]; if (v === v) last[k] = v; }
+      if (same) run++; else { if (run >= o.frozenRun) for (let k = i - run; k < i; k++) if (!inv[k]) inv[k] = 2; run = 0; }
+    }
+    const invIv = []; for (let i = 0; i < n;) { if (!inv[i]) { i++; continue; } let j = i; while (j < n && inv[j]) j++; let k = j; while (k < n && k - j <= 5 && !inv[k]) k++;
+      if (k < n && inv[k] && k - j <= 5) { for (let q = j; q < k; q++) inv[q] = inv[j - 1]; continue; }
+      if (j - i >= 5) invIv.push({ s: i, e: j, kind: inv[i] === 2 ? 'frozen' : 'zero' }); i = j; }
+    const Hv = H.map((v, i) => inv[i] ? NaN : v), Cv = C.map((v, i) => inv[i] ? NaN : v);
+    // 2) minute medians
+    const t0 = t[0], M = Math.floor((t[n - 1] - t0) / 60) + 1, Hm = new Float64Array(M).fill(NaN), Cm = new Float64Array(M).fill(NaN);
+    for (let m = 0, i = 0; m < M; m++) { const end = t0 + (m + 1) * 60; const wh = [], wc = []; while (i < n && t[i] < end) { if (Number.isFinite(Hv[i])) wh.push(Hv[i]); if (Number.isFinite(Cv[i])) wc.push(Cv[i]); i++; } if (wh.length) Hm[m] = median(wh); if (wc.length) Cm[m] = median(wc); }
+    // 3) unstable minutes: centred change over ±3 min, or deviation from a ±7 min median
+    const uns = new Uint8Array(M);
+    const at = (a, i) => a[Math.min(M - 1, Math.max(0, i))];
+    for (let m = 0; m < M; m++) {
+      for (const a of [Hm, Cm]) {
+        const d1 = Math.abs(at(a, m + 3) - at(a, m - 3)); if (d1 > o.theta) uns[m] = 1;
+        const w = []; for (let k = m - 7; k <= m + 7; k++) if (k >= 0 && k < M) w.push(a[k]);
+        const md = median(w); if (Math.abs(a[m] - md) > o.theta) uns[m] = 1;
+      }
+    }
+    let runs = []; for (let m = 0; m < M;) { if (!uns[m]) { m++; continue; } let j = m; while (j < M && uns[j]) j++; runs.push([m, j - 1]); m = j; }
+    runs = runs.reduce((acc, r) => { const l = acc[acc.length - 1]; if (l && r[0] - l[1] <= 4) l[1] = r[1]; else acc.push(r.slice()); return acc; }, []);
+    // 4) refine each run at 1 Hz against the local trend before/after it (handles drifting baselines)
+    const Hs = smooth5(Hv), Cs = smooth5(Cv), S2 = [Hs, Cs];
+    const fit = (y, a, b, anchor) => { const i0 = lowerBound(t, a), i1 = lowerBound(t, b); let n2 = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+      for (let i = i0; i < i1; i++) { const v = y[i]; if (!Number.isFinite(v)) continue; const x = t[i] - anchor; n2++; sx += x; sy += v; sxx += x * x; sxy += x * v; }
+      if (n2 < 30) return null; const d = n2 * sxx - sx * sx; const k = d > 0 ? (n2 * sxy - sx * sy) / d : 0; const m = (sy - k * sx) / n2; return tt => m + k * (tt - anchor); };
+    let events = [];
+    for (const [a, b] of runs) {
+      const A = t0 + a * 60, B = t0 + (b + 1) * 60, i0 = lowerBound(t, A), i1 = lowerBound(t, B);
+      if (i1 - i0 < 2) continue;
+      const pre = S2.map(y => fit(y, A - 900, A, A)), post = S2.map(y => fit(y, B, B + 900, B));
+      let on = -1, off = -1; const exc = [0, 0];
+      for (let i = i0; i < i1; i++) for (let s = 0; s < 2; s++) { const y = S2[s][i]; if (!Number.isFinite(y)) continue;
+        if (pre[s]) { const d = Math.abs(y - pre[s](t[i])); exc[s] = Math.max(exc[s], d); if (d > o.tol && on < 0) on = i; }
+        else if (post[s]) exc[s] = Math.max(exc[s], Math.abs(y - post[s](t[i])));
+        if (post[s] && Math.abs(y - post[s](t[i])) > o.tol) off = i; }
+      const noPre = !pre[0] && !pre[1], noPost = !post[0] && !post[1];
+      if (noPre) on = i0; if (noPost) off = i1 - 1;
+      if (on < 0 || off < 0 || off < on) continue;
+      if (Math.max(exc[0], exc[1]) < o.ampThr) continue;
+      let returns = !noPre && !noPost;
+      if (returns) for (let s = 0; s < 2; s++) { if (!pre[s] || !post[s]) continue; const te = t[off];
+        if (Math.abs(post[s](te) - pre[s](te)) / Math.max(exc[s], 0.6) >= 0.3) returns = false; }
+      events.push({ s: on, e: off + 1, type: returns ? '操作事件' : '製程暫態', why: returns ? '下降後回到原趨勢' : (noPre || noPost ? '緊鄰無效段' : '水準改變') });
+    }
+    // merge overlapping / near events (gap < 120 s)
+    events.sort((x, y) => x.s - y.s);
+    events = events.reduce((acc, ev) => { const l = acc[acc.length - 1]; if (l && t[ev.s] - t[l.e - 1] < 120) { l.e = Math.max(l.e, ev.e); if (ev.type !== l.type) { l.type = '製程暫態'; l.why = '水準改變'; } } else acc.push(ev); return acc; }, []);
+    // 5) assemble timeline: invalid > events > stretches
+    const owner = new Int32Array(n).fill(-1); const blocks = [];
+    for (const iv of invIv) { const id = blocks.push({ s: iv.s, e: iv.e, type: '無效', why: iv.kind === 'frozen' ? '數值凍結' : '全為 0' }) - 1; for (let i = iv.s; i < iv.e; i++) owner[i] = id; }
+    for (const ev of events) { const id = blocks.push(ev) - 1; for (let i = ev.s; i < ev.e; i++) if (owner[i] < 0) owner[i] = id; }
+    const segs = [];
+    for (let i = 0; i < n;) { let j = i; const id = owner[i]; while (j < n && owner[j] === id) j++;
+      if (id >= 0) segs.push({ s: i, e: j, type: blocks[id].type, why: blocks[id].why }); else segs.push({ s: i, e: j, type: null }); i = j; }
+    // 6) stretches: find the longest steady sub-window (minute grid, prefix sums); the rest is 製程暫態
+    const pref = a2 => { const P = { n: [0], x: [0], y: [0], xx: [0], xy: [0] }; for (let m = 0; m < M; m++) { const v = a2[m], ok = Number.isFinite(v) ? 1 : 0;
+      P.n.push(P.n[m] + ok); P.x.push(P.x[m] + ok * m); P.y.push(P.y[m] + (ok ? v : 0)); P.xx.push(P.xx[m] + ok * m * m); P.xy.push(P.xy[m] + (ok ? m * v : 0)); } return P; };
+    const PH = pref(Hm), PC = pref(Cm);
+    const slopeM = (P, a2, b2) => { const n2 = P.n[b2] - P.n[a2], sx = P.x[b2] - P.x[a2], sy = P.y[b2] - P.y[a2], sxx = P.xx[b2] - P.xx[a2], sxy = P.xy[b2] - P.xy[a2]; const d = n2 * sxx - sx * sx; return n2 > 5 && d > 0 ? (n2 * sxy - sx * sy) / d * 60 : NaN; };
+    const steadyM = (a2, b2) => { const h = slopeM(PH, a2, b2), c = slopeM(PC, a2, b2); return Number.isFinite(h) && Number.isFinite(c) && Math.abs(h) < o.drift && Math.abs(c) < o.drift; };
+    const rowAt = m => lowerBound(t, t0 + m * 60);
+    const out = []; const push = g => { const l = out[out.length - 1]; if (l && l.type === g.type && (g.type === '無效' || g.type === '製程暫態' && l.why === g.why)) { l.e = g.e; return; } out.push(g); };
+    for (const g of segs) {
+      const dur = t[g.e - 1] - t[g.s];
+      if (g.type !== null) { push(g); continue; }
+      if (dur < 180 && out.length) { out[out.length - 1].e = g.e; continue; }
+      const ms = Math.ceil((t[g.s] - t0) / 60), me = Math.floor((t[g.e - 1] - t0) / 60) + 1, L = o.minSteady;
+      let best = null;
+      if (me - ms >= L) {
+        if (steadyM(ms, me)) best = [ms, me];
+        else for (let len = me - ms - 5; len >= L && !best; len -= 5) for (let a2 = ms; a2 + len <= me; a2 += 5) if (steadyM(a2, a2 + len)) { best = [a2, a2 + len]; break; }
+      }
+      if (!best) { push({ s: g.s, e: g.e, type: '製程暫態', why: dur < L * 60 ? '時間太短' : '仍在漂移' }); continue; }
+      let rs = best[0] <= ms ? g.s : rowAt(best[0]), re = best[1] >= me ? g.e : rowAt(best[1]);
+      if (t[rs] - t[g.s] < 360) rs = g.s; if (re < g.e && t[g.e - 1] - t[re] < 360) re = g.e;
+      if (rs > g.s) push({ s: g.s, e: rs, type: '製程暫態', why: '尚未穩定' });
+      push({ s: rs, e: re, type: '穩態', why: '漂移小' });
+      if (re < g.e) push({ s: re, e: g.e, type: '製程暫態', why: '開始漂移' });
+    }
+    return out;
+  }
+  /* ---------- time grid: insert the missing timestamps as empty rows ---------- */
+  function regularize(d) {
+    const t = d.t, n = d.n; if (n < 3) return d;
+    const dts = []; for (let i = 1; i < Math.min(n, 20000); i++) { const x = t[i] - t[i - 1]; if (x > 0) dts.push(x); }
+    const step = Math.max(1, Math.round(median(dts) || 1)), t0 = t[0], N = Math.floor((t[n - 1] - t0) / step) + 1;
+    if (!(N > 0) || N > n * 3) return d;
+    const idx = new Int32Array(N).fill(-1); let dup = 0;
+    for (let i = 0; i < n; i++) { const k = Math.round((t[i] - t0) / step); if (k < 0 || k >= N) continue; if (idx[k] < 0) idx[k] = i; else dup++; }
+    let inserted = 0; for (let k = 0; k < N; k++) if (idx[k] < 0) inserted++;
+    const nt = new Float64Array(N); for (let k = 0; k < N; k++) nt[k] = t0 + k * step;
+    const cols = {}; for (const [name, a] of Object.entries(d.cols)) { const b = new Float32Array(N).fill(NaN); for (let k = 0; k < N; k++) if (idx[k] >= 0) b[k] = a[idx[k]]; cols[name] = b; }
+    return Object.assign({}, d, { t: nt, cols, n: N, regular: { step, inserted, dup } });
+  }
+
+  /* ---------- bad-point detection ----------
+     codes: 1 錯誤碼, 2 缺值/時間斷點, 3 即跳點, 4 手動, 5 錯誤碼鄰近點 */
+  const CODE_NAME = { 1: '錯誤碼', 2: '缺值', 3: '即跳點', 4: '手動', 5: '錯誤碼鄰近' };
+  function detectBad(t, raw, s, e, o, manual) {
+    const n = t.length, bad = new Uint8Array(n), y = clean(raw, o.drop);
+    for (let i = s; i < e; i++) { const v = raw[i]; if (!Number.isFinite(v)) { if (o.gap) bad[i] = 2; } else if (v <= o.drop && o.code) bad[i] = 1; }
+    if (o.code && o.ext > 0) for (let i = s; i < e;) { if (bad[i] !== 1) { i++; continue; } let j = i; while (j < e && bad[j] === 1) j++;
+      for (let k = 1, c = 0; c < o.ext && i - k >= s; k++) { if (bad[i - k]) continue; if (Number.isFinite(y[i - k])) { bad[i - k] = 5; c++; } }
+      for (let k = 0, c = 0; c < o.ext && j + k < e; k++) { if (bad[j + k]) continue; if (Number.isFinite(y[j + k])) { bad[j + k] = 5; c++; } }
+      i = j; }
+    if (o.spike) {
+      const w = Math.max(2, Math.round(o.win)), L = new Float64Array(w), R = new Float64Array(w), A = new Float64Array(2 * w), D = new Float64Array(2 * w);
+      // median by quickselect (in place on scratch arrays; same result as sorting)
+      const selMed = (a, m) => { const k = m >> 1; let lo = 0, hi = m - 1;
+        while (lo < hi) { const p = a[(lo + hi) >> 1]; let i = lo, j = hi;
+          while (i <= j) { while (a[i] < p) i++; while (a[j] > p) j--; if (i <= j) { const t = a[i]; a[i] = a[j]; a[j] = t; i++; j--; } }
+          if (k <= j) hi = j; else if (k >= i) lo = i; else break; }
+        let v = a[k]; if (m % 2 === 0) { let mx = -Infinity; for (let q = 0; q < k; q++) if (a[q] > mx) mx = a[q]; v = (v + mx) / 2; } return v; };
+      const S = new Float64Array(2 * w), qmed = (src, m) => { for (let q = 0; q < m; q++) S[q] = src[q]; return selMed(S, m); };
+      const ok = k => { const u = y[k]; return u === u && bad[k] !== 1 && bad[k] !== 2 && bad[k] !== 5; };
+      // quick screen: sliding min/max of the valid neighbours on each side (O(n)); a point can only deviate
+      // from a side's median by more than minDev if it is more than minDev outside that side's min/max
+      const len = e - s, P = new Int32Array(n + 1); for (let k = 0; k < n; k++) P[k + 1] = P[k] + (ok(k) ? 1 : 0);
+      const minL = new Float64Array(len), maxL = new Float64Array(len), minR = new Float64Array(len), maxR = new Float64Array(len);
+      const q1 = new Int32Array(n + 1), q2 = new Int32Array(n + 1);
+      let h1 = 0, t1 = 0, h2 = 0, t2 = 0;
+      for (let i = Math.max(0, s - w); i < e; i++) { const k = i - 1;
+        if (k >= 0 && ok(k)) { while (t1 > h1 && y[q1[t1 - 1]] >= y[k]) t1--; q1[t1++] = k; while (t2 > h2 && y[q2[t2 - 1]] <= y[k]) t2--; q2[t2++] = k; }
+        while (t1 > h1 && q1[h1] < i - w) h1++; while (t2 > h2 && q2[h2] < i - w) h2++;
+        if (i >= s) { minL[i - s] = t1 > h1 ? y[q1[h1]] : Infinity; maxL[i - s] = t2 > h2 ? y[q2[h2]] : -Infinity; } }
+      h1 = t1 = h2 = t2 = 0;
+      for (let i = Math.min(n - 1, e - 1 + w); i >= s; i--) { const k = i + 1;
+        if (k < n && ok(k)) { while (t1 > h1 && y[q1[t1 - 1]] >= y[k]) t1--; q1[t1++] = k; while (t2 > h2 && y[q2[t2 - 1]] <= y[k]) t2--; q2[t2++] = k; }
+        while (t1 > h1 && q1[h1] > i + w) h1++; while (t2 > h2 && q2[h2] > i + w) h2++;
+        if (i < e) { minR[i - s] = t1 > h1 ? y[q1[h1]] : Infinity; maxR[i - s] = t2 > h2 ? y[q2[h2]] : -Infinity; } }
+      const md = o.minDev > 0 ? o.minDev : 0;
+      for (let i = s; i < e; i++) { const v = y[i]; if (!(v === v) || bad[i]) continue; const j = i - s;
+        if (P[i] - P[Math.max(0, i - w)] < 3 || P[Math.min(n, i + w + 1)] - P[i + 1] < 3) continue;
+        const up = v - minL[j] > md && v - minR[j] > md, dn = maxL[j] - v > md && maxR[j] - v > md;
+        if (!up && !dn) continue;
+        let nl = 0, nr = 0; for (let k = i - 1; k >= 0 && k >= i - w; k--) { const u = y[k]; if (u === u && bad[k] !== 1 && bad[k] !== 2 && bad[k] !== 5) L[nl++] = u; }
+        for (let k = i + 1; k < n && k <= i + w; k++) { const u = y[k]; if (u === u && bad[k] !== 1 && bad[k] !== 2 && bad[k] !== 5) R[nr++] = u; }
+        if (nl < 3 || nr < 3) continue;
+        for (let k = 0; k < nl; k++) A[k] = L[k]; for (let k = 0; k < nr; k++) A[nl + k] = R[k];
+        const ml = qmed(L, nl), mr = qmed(R, nr), m = selMed(A, nl + nr);
+        for (let k = 0; k < nl + nr; k++) D[k] = Math.abs((k < nl ? L[k] : R[k - nl]) - m);
+        const mad = 1.4826 * selMed(D, nl + nr), thr = Math.max(o.k * mad, o.minDev), dl = v - ml, dr = v - mr;
+        if (Math.abs(dl) > thr && Math.abs(dr) > thr && Math.sign(dl) === Math.sign(dr)) bad[i] = 3; }
+    }
+    if (manual) for (const [ms, me] of manual) for (let i = Math.max(s, ms); i < Math.min(e, me); i++) bad[i] = 4;
+    return bad;
+  }
+
+  /* ---------- fills ---------- */
+  function solve(M, v) { const n = v.length; for (let c = 0; c < n; c++) { let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+      [M[c], M[p]] = [M[p], M[c]]; [v[c], v[p]] = [v[p], v[c]]; if (Math.abs(M[c][c]) < 1e-12) return null;
+      for (let r = c + 1; r < n; r++) { const f = M[r][c] / M[c][c]; for (let k = c; k < n; k++) M[r][k] -= f * M[c][k]; v[r] -= f * v[c]; } }
+    const x = new Array(n); for (let r = n - 1; r >= 0; r--) { let s = v[r]; for (let k = r + 1; k < n; k++) s -= M[r][k] * x[k]; x[r] = s / M[r][r]; } return x; }
+  function lsq(basis, xs, ys) { const m = basis.length, M = Array.from({ length: m }, () => new Array(m).fill(0)), v = new Array(m).fill(0);
+    for (let i = 0; i < xs.length; i++) { const b = basis.map(f => f(xs[i])); for (let r = 0; r < m; r++) { v[r] += b[r] * ys[i]; for (let c = 0; c < m; c++) M[r][c] += b[r] * b[c]; } }
+    const c = solve(M, v); if (!c || c.some(z => !Number.isFinite(z))) return null; let sse = 0;
+    for (let i = 0; i < xs.length; i++) { let f = 0; for (let r = 0; r < m; r++) f += c[r] * basis[r](xs[i]); sse += (f - ys[i]) ** 2; }
+    return { f: x => { let f = 0; for (let r = 0; r < m; r++) f += c[r] * basis[r](x); return f; }, sse }; }
+  function makeFit(method, xs, ys, o, tL, tR) {
+    const tc = (tL + tR) / 2, sc = Math.max(1, (Math.max(...xs) - Math.min(...xs)) / 2);
+    if (method === 'poly') { const deg = Math.min(o.deg || 2, Math.max(1, xs.length - 2)); const basis = [];
+      for (let d = 0; d <= deg; d++) basis.push(x => Math.pow((x - tc) / sc, d)); const r = lsq(basis, xs, ys); return r && r.f; }
+    if (method === 'exp') { let mn = Infinity, mx = -Infinity; for (const y of ys) { if (y < mn) mn = y; if (y > mx) mx = y; }
+      const off = mn > 0 ? 0 : mn - Math.max(1e-6, (mx - mn) * 0.01 + 1e-3);
+      const r = lsq([() => 1, x => (x - tc) / sc], xs, ys.map(y => Math.log(y - off))); return r && (x => off + Math.exp(r.f(x))); }
+    if (method === 'log') { const x0 = Math.min(...xs) - 1; const r = lsq([() => 1, x => Math.log(x - x0)], xs, ys); return r && (x => r.f(Math.max(x, x0 + 1e-6))); }
+    if (method === 'sine') { const span = Math.max(...xs) - Math.min(...xs), gap = tR - tL; let best = null;
+      const pMin = Math.max(4, gap / 2), pMax = Math.max(pMin * 2, 4 * span);
+      for (let k = 0; k < 32; k++) { const P = pMin * Math.pow(pMax / pMin, k / 31), w = 2 * Math.PI / P;
+        const r = lsq([() => 1, x => Math.sin(w * (x - tc)), x => Math.cos(w * (x - tc))], xs, ys); if (r && (!best || r.sse < best.sse)) best = r; }
+      return best && best.f; }
+    return null;
+  }
+  /* o: {method, deg, ctx (s), align, maxGap (s)} ; writes filled values into out (Float64Array) */
+  function fillRuns(t, y0, bad, s, e, o, out) {
+    const n = t.length, good = i => bad[i] === 0 && y0[i] === y0[i], runs = [];
+    for (let i = s; i < e;) { if (!bad[i]) { i++; continue; } let j = i, manual = false; const codes = new Set(); while (j < e && bad[j]) { codes.add(bad[j]); if (bad[j] === 4) manual = true; j++; }
+      const a = i, b = j - 1; i = j; let L = a - 1; while (L >= 0 && !good(L)) L--; let R = b + 1; while (R < n && !good(R)) R++;
+      const run = { a, b, codes: [...codes].sort(), method: o.method, filled: false, note: '' };
+      for (let k = a; k <= b; k++) out[k] = NaN;
+      if (L < 0 || R >= n) { run.note = '在資料邊緣，沒有前後端點'; runs.push(run); continue; }
+      const span = t[R] - t[L]; run.yL = y0[L]; run.yR = y0[R];
+      if (!manual && span > o.maxGap) { run.note = `斷點 ${Math.round(span)} 秒，超過最長修補`; runs.push(run); continue; }
+      let f = null;
+      if (o.method !== 'linear') { const xs = [], ys = [];
+        for (let k = L; k >= 0 && t[L] - t[k] <= o.ctx; k--) if (good(k)) { xs.push(t[k]); ys.push(y0[k]); }
+        for (let k = R; k < n && t[k] - t[R] <= o.ctx; k++) if (good(k)) { xs.push(t[k]); ys.push(y0[k]); }
+        if (xs.length >= 4) f = makeFit(o.method, xs, ys, o, t[L], t[R]);
+        if (f && !(Number.isFinite(f(t[L])) && Number.isFinite(f(t[R])))) f = null;
+        if (!f) run.note = '擬合失敗，改用線性'; }
+      const lin = x => y0[L] + (y0[R] - y0[L]) * (x - t[L]) / (t[R] - t[L]);
+      const cL = f && o.align ? y0[L] - f(t[L]) : 0, cR = f && o.align ? y0[R] - f(t[R]) : 0;
+      for (let k = a; k <= b; k++) { const x = t[k]; let v = f ? f(x) + cL + (cR - cL) * (x - t[L]) / (t[R] - t[L]) : lin(x); out[k] = Number.isFinite(v) ? v : lin(x); }
+      if (f) { // a fit that swings far outside the data around the gap is not trusted
+        let cmin = Math.min(y0[L], y0[R]), cmax = Math.max(y0[L], y0[R]);
+        for (let k = L; k >= 0 && t[L] - t[k] <= o.ctx; k--) if (good(k)) { cmin = Math.min(cmin, y0[k]); cmax = Math.max(cmax, y0[k]); }
+        for (let k = R; k < n && t[k] - t[R] <= o.ctx; k++) if (good(k)) { cmin = Math.min(cmin, y0[k]); cmax = Math.max(cmax, y0[k]); }
+        const mg = Math.max(0.5 * (cmax - cmin), 0.1);
+        let off = false; for (let k = a; k <= b; k++) if (out[k] < cmin - mg || out[k] > cmax + mg) { off = true; break; }
+        if (off) { for (let k = a; k <= b; k++) out[k] = lin(t[k]); run.note = '擬合曲線超出前後數據範圍，改用線性'; } }
+      run.filled = true; runs.push(run); }
+    return runs;
+  }
+  return { parseTime, parseCSV, autoSegment, slopePerHour, median, clean, lowerBound, regularize, detectBad, fillRuns, CODE_NAME };
+}
+const CORE = coreFactory();
+if (typeof module !== 'undefined') module.exports = CORE;
+
+</script>
+<script>
+const TCLS={'穩態':'t-steady','製程暫態':'t-process','操作事件':'t-op','無效':'t-invalid'};
+const TBG={'穩態':'--steady-bg','製程暫態':'--proc-bg','操作事件':'--op-bg','無效':'--inv-bg'};
+const PREF=['H2','CO','CO2','CO2(CAP)'];
+const $=id=>document.getElementById(id);
+const p2=n=>String(n).padStart(2,'0');
+function fmt(s){const d=new Date(Math.round(s)*1000);return {date:p2(d.getUTCMonth()+1)+'/'+p2(d.getUTCDate()),hm:p2(d.getUTCHours())+':'+p2(d.getUTCMinutes()),hms:p2(d.getUTCHours())+':'+p2(d.getUTCMinutes())+':'+p2(d.getUTCSeconds())}}
+const r4=v=>Number.isFinite(v)?Math.round(v*1e4)/1e4:null,r6=v=>Number.isFinite(v)?Math.round(v*1e6)/1e6:null;
+const fnum=(v,d=2)=>Number.isFinite(v)?v.toFixed(d):'—';
+const xl=s=>s/86400+25569;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let DATA=null,FILE='',IS_SAMPLE=false,SEGS=[],UID=1,sigCols=[],useful=[],segBy={h:null,c:null};
+let sel=new Set(),filter='all',focus={uid:null,col:null},splitIdx=null;
+const thumbCache=new Map();
+const segIndex=uid=>SEGS.findIndex(g=>g.uid===uid);
+const segName=g=>'S'+p2(SEGS.indexOf(g)+1);
+
+/* ---------- settings ---------- */
+const PIDS={theta:'pTheta',tol:'pTol',drift:'pDrift',minSteady:'pMin',drop:'pDrop'};
+function params(){const o={};for(const [k,id] of Object.entries(PIDS)){const v=parseFloat($(id).value);if(Number.isFinite(v))o[k]=v}return o}
+try{const s=JSON.parse(__LS.getItem('seg_params')||'{}');for(const [k,id] of Object.entries(PIDS))if(s[k]!=null)$(id).value=s[k];if(s.res){const r=document.querySelector(`input[name=res][value="${String(s.res).replace('s','')}"]`);if(r)r.checked=true}}catch(e){}
+function saveParams(){try{const o=params();o.res=document.querySelector('input[name=res]:checked').value;__LS.setItem('seg_params',JSON.stringify(o))}catch(e){}}
+const DROP=()=>{const v=parseFloat($('pDrop').value);return Number.isFinite(v)?v:-5};
+
+/* ---------- suite: keep the last CSV and its segments in this browser ---------- */
+const SEGSTORE=(()=>{let dbp=null;const open=()=>dbp||(dbp=new Promise(res=>{try{const rq=indexedDB.open('reactor-seg',1);rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('kv')}catch(e){}};rq.onsuccess=()=>res(rq.result);rq.onerror=()=>res(null);rq.onblocked=()=>res(null)}catch(e){res(null)}}));
+  const op=(mode,fn)=>open().then(db=>db?new Promise(res=>{try{const tx=db.transaction('kv',mode),r=fn(tx.objectStore('kv'));tx.oncomplete=()=>res(r?r.result:true);tx.onerror=tx.onabort=()=>res(null)}catch(e){res(null)}}):null);
+  return {get:k=>op('readonly',s=>s.get(k)),put:(k,v)=>op('readwrite',s=>s.put(v,k))}})();
+let PENDING=null,RESTMSG='',psT=0;
+const dataSig=d=>[FILE,d.n,d.t[0],d.t[d.n-1]].join('|');
+function persistSegs(){if(!DATA||!SEGS.length)return;clearTimeout(psT);psT=setTimeout(()=>{if(!DATA)return;SEGSTORE.put('segs',{sig:dataSig(DATA),file:FILE,sample:IS_SAMPLE,uid:UID,
+  segs:SEGS.map(g=>({uid:g.uid,s:g.s,e:g.e,type:g.type,why:g.why,label:g.label,labelAuto:g.labelAuto,op:g.op})),sel:[...sel],filter,focus:{uid:focus.uid,col:focus.col},sigCols:sigCols.slice(),segBy:{h:segBy.h,c:segBy.c},at:Date.now()})},400)}
+function applyPending(){const p=PENDING;PENDING=null;if(!p||p.sig!==dataSig(DATA)||!Array.isArray(p.segs)||!p.segs.length)return false;
+  const sg=p.segs;if(sg[0].s!==0||sg[sg.length-1].e!==DATA.n)return false;for(let i=0;i<sg.length;i++){if(!(sg[i].e>sg[i].s))return false;if(i&&sg[i].s!==sg[i-1].e)return false}
+  const sc=(p.sigCols||[]).filter(c=>useful.includes(c));if(sc.length)sigCols=sc;
+  if(p.segBy&&useful.includes(p.segBy.h)&&useful.includes(p.segBy.c))segBy={h:p.segBy.h,c:p.segBy.c};
+  SEGS=sg.map(g=>({uid:g.uid,s:g.s,e:g.e,type:g.type,why:g.why||'',label:g.label||'',labelAuto:g.labelAuto!==false,op:g.op||''}));
+  UID=Math.max(p.uid||0,...SEGS.map(g=>g.uid))+1;sel=new Set(Array.isArray(p.sel)?p.sel:[]);filter=p.filter||'all';splitIdx=null;
+  const fu=p.focus&&SEGS.some(g=>g.uid===p.focus.uid)?p.focus.uid:SEGS[0].uid;focus={uid:fu,col:p.focus&&sigCols.includes(p.focus.col)?p.focus.col:sigCols[0]};
+  RESTMSG='已還原上次的分段、名稱與選取。數據修補沒有保存，需要時再按一次「偵測並修補」。';buildSettings();renderAll();return true}
+
+/* ---------- loading ---------- */
+const workerSrc=coreFactory.toString()+'\nconst CORE=coreFactory();\nself.onmessage=async e=>{try{const txt=await e.data.file.text();const d0=CORE.parseCSV(txt);const d=e.data.regular?CORE.regularize(d0):d0;self.postMessage({ok:true,d},[d.t.buffer,...Object.values(d.cols).map(a=>a.buffer)])}catch(err){self.postMessage({ok:false,msg:String(err&&err.message||err)})}};';
+let worker=null;
+function parseFile(file,regular){const local=()=>file.text().then(x=>{const d=CORE.parseCSV(x);return regular?CORE.regularize(d):d});return new Promise((res,rej)=>{
+  try{if(!worker)worker=new Worker(URL.createObjectURL(new Blob([workerSrc],{type:'text/javascript'})))}catch(e){worker=null}
+  if(!worker){local().then(res).catch(rej);return}
+  worker.onmessage=e=>e.data.ok?res(e.data.d):rej(new Error(e.data.msg));
+  worker.onerror=e=>{worker=null;local().then(res).catch(rej)};
+  worker.postMessage({file,regular})})}
+let LAST=null;
+function loadMsg(msg,err){const s=$('loadStatus');s.hidden=!msg;s.textContent=msg||'';s.classList.toggle('err',!!err)}
+async function loadFile(file,sample){
+  if(!file)return;
+  if(/\.(xlsx?|xls)$/i.test(file.name)){loadMsg('目前只讀記錄器輸出的 CSV。Excel 檔請另存成 CSV 再拖進來。',true);return}
+  LAST={file,sample:!!sample};loadMsg(`讀取並解析 ${file.name}（${(file.size/1e6).toFixed(1)} MB）…`);
+  try{const d=await parseFile(file,$('regIn').checked);
+    if(d.n<20)throw new Error('找不到可用的資料列。第一欄（或名為 Times 的欄）需要是日期時間。');
+    if(d.bad>d.n)throw new Error(`有 ${d.bad.toLocaleString()} 列的時間無法解析，請確認時間欄格式。`);
+    onParsed(d,file.name,!!sample);loadMsg(RESTMSG);RESTMSG='';if(!sample&&!file.__restored)SEGSTORE.put('file',{name:file.name,size:file.size,blob:file,at:Date.now()})}
+  catch(err){loadMsg('讀取失敗：'+(err&&err.message||err),true)}}
+async function loadSample(){
+  try{const r=await fetch('data/sample_6hr_Red.b64.txt');if(!r.ok)throw new Error('HTTP '+r.status);const bin=atob((await r.text()).trim()),buf=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)buf[i]=bin.charCodeAt(i);let blob;
+    if(buf[0]===0x1f&&buf[1]===0x8b){if(typeof DecompressionStream==='undefined')throw new Error('這個瀏覽器無法解壓範例檔');blob=await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).blob()}
+    else blob=new Blob([buf]);
+    await loadFile(new File([blob],'6hr_Red.csv'),true)}
+  catch(err){$('fileinfo').textContent='尚未載入檔案';loadMsg('本站沒有附範例檔，請拖入或選擇記錄器 CSV。')}}
+
+function onParsed(d,name,sample){
+  DATA=d;FILE=name;IS_SAMPLE=sample;thumbCache.clear();CLEANC.clear();for(const k in COLVER)delete COLVER[k];REPAIR={};MANUAL={};mSel=null;REPVER++;
+  useful=d.info.filter(x=>!x.constant&&!x.sentinel).map(x=>x.name);
+  const pref=PREF.filter(c=>useful.includes(c));
+  sigCols=pref.length?pref:useful.filter(c=>!/time|step/i.test(c)).slice(0,4);
+  segBy.h=useful.includes('H2')?'H2':sigCols[0];segBy.c=useful.includes('CO2')?'CO2':(sigCols[1]||sigCols[0]);
+  if(!applyPending()){buildSettings();runAuto()}}
+function buildSettings(){
+  const all=DATA.info.map(x=>x.name),hidden=DATA.info.filter(x=>x.constant||x.sentinel).map(x=>x.name);
+  $('colpick').innerHTML=useful.map(c=>`<label><input type="checkbox" class="cp" value="${esc(c)}" ${sigCols.includes(c)?'checked':''}>${esc(c)}</label>`).join('')+
+    (hidden.length?`<span style="font-size:12px;color:var(--muted)">已隱藏 ${hidden.length} 個固定值或感測器斷線欄位</span>`:'');
+  const opts=v=>useful.map(c=>`<option ${c===v?'selected':''}>${esc(c)}</option>`).join('');
+  $('segH').innerHTML=opts(segBy.h);$('segC').innerHTML=opts(segBy.c);}
+$('colpick').addEventListener('change',()=>{sigCols=[...document.querySelectorAll('.cp:checked')].map(x=>x.value);if(!sigCols.length){sigCols=[segBy.h];buildSettings()}
+  if(!sigCols.includes(focus.col))focus.col=sigCols[0];buildMatrix();refresh();renderDetail()});
+$('segH').addEventListener('change',e=>{segBy.h=e.target.value});$('segC').addEventListener('change',e=>{segBy.c=e.target.value});
+$('regIn').addEventListener('change',()=>{if(LAST)loadFile(LAST.file,LAST.sample)});
+$('reseg').addEventListener('click',()=>{if(!DATA)return;saveParams();thumbCache.clear();runAuto()});
+
+function runAuto(){
+  const keys=PREF.filter(c=>DATA.cols[c]);
+  const segs=CORE.autoSegment(DATA,Object.assign({h:segBy.h,c:segBy.c,keys:keys.length?keys:[segBy.h,segBy.c]},params()));
+  SEGS=segs.map(g=>({uid:UID++,s:g.s,e:g.e,type:g.type,why:g.why,label:'',labelAuto:true,op:''}));
+  autoLabels();sel.clear();splitIdx=null;
+  const st=SEGS.filter(g=>g.type==='穩態').sort((a,b)=>(b.e-b.s)-(a.e-a.s))[0]||SEGS[0];
+  focus={uid:st.uid,col:sigCols.includes(segBy.h)?segBy.h:sigCols[0]};renderAll();}
+function autoLabels(){const k={};for(const g of SEGS){k[g.type]=(k[g.type]||0)+1;if(!g.labelAuto)continue;
+  g.label=g.type==='穩態'?'穩態 '+k[g.type]:g.type==='操作事件'?'事件 '+k[g.type]:(g.why||g.type)}}
+
+/* ---------- series helpers ---------- */
+let REPAIR={},MANUAL={},REPVER=0,mSel=null;
+const useFix=()=>$('useFix').checked;
+var REPBUSY=false;const CLEANC=new Map(),COLVER={};const colVer=c=>COLVER[c]||0;function bump(cols){for(const c of cols)COLVER[c]=colVer(c)+1}
+function cleanFull(col){const k=col+'|'+DROP();let a=CLEANC.get(k);if(!a){a=CORE.clean(DATA.cols[col],DROP());CLEANC.set(k,a)}return a}
+function series(col,s,e){const Rp=REPAIR[col];if(Rp&&useFix())return Rp.y.subarray(s,e);return cleanSlice(col,s,e)}
+function fixCount(col,s,e){const Rp=REPAIR[col];if(!Rp)return {fixed:0,left:0};let fixed=0,left=0;for(let i=s;i<e;i++)if(Rp.code[i]){if(Number.isFinite(Rp.y[i]))fixed++;else left++}return {fixed,left}}
+function cleanSlice(col,s,e){return cleanFull(col).subarray(s,e)}
+function dropCount(col,s,e){const y=DATA.cols[col],d=DROP();let k=0;for(let i=s;i<e;i++)if(Number.isFinite(y[i])&&y[i]<=d)k++;return k}
+function stats(y){let n=0,s=0,s2=0,mn=Infinity,mx=-Infinity;for(const v of y){if(!Number.isFinite(v))continue;n++;s+=v;s2+=v*v;if(v<mn)mn=v;if(v>mx)mx=v}
+  const mean=n?s/n:NaN;return {n,mean,min:n?mn:NaN,max:n?mx:NaN,sd:n>1?Math.sqrt(Math.max(0,(s2-n*mean*mean)/(n-1))):NaN}}
+const UNIT={H2:'%',CO:'%',CO2:'%'};
+const sigLabel=c=>UNIT[c]?`${c} (${UNIT[c]})`:c;
+const AVG=()=>{const r=document.querySelector('input[name=res]:checked');return r?Math.max(1,+r.value||1):1};
+const avgName=()=>AVG()===1?'1 Hz 原始':AVG()+' s 平均';
+function avgSeries(t,y,mask,step,origin){if(step<=1)return {t,y,mask};const ot=[],oy=[],om=[];let cur=null,sum=0,c=0,m=0;
+  const flush=()=>{if(cur===null)return;ot.push(origin+(cur+0.5)*step);oy.push(c?sum/c:NaN);om.push(m)};
+  for(let i=0;i<t.length;i++){const b=Math.floor((t[i]-origin)/step);if(b!==cur){flush();cur=b;sum=0;c=0;m=0}const v=y[i];if(v===v){sum+=v;c++}if(mask&&mask[i])m=1}flush();
+  return {t:Float64Array.from(ot),y:Float64Array.from(oy),mask:mask?Uint8Array.from(om):null}}
+function view(col,s,e,origin){const t=DATA.t.subarray(s,e),Rp=useFix()&&REPAIR[col],o0=origin===undefined?DATA.t[s]:origin;
+  const o=avgSeries(t,series(col,s,e),Rp?Rp.code.subarray(s,e):null,AVG(),o0);if(Rp)o.under=avgSeries(t,cleanSlice(col,s,e),null,AVG(),o0).y;return o}
+function thumb(g,col){const key=[g.uid,col,g.s,g.e,DROP(),colVer(col),useFix(),AVG()].join('|');if(thumbCache.has(key))return thumbCache.get(key);
+  const v=view(col,g.s,g.e),st=stats(v.y),fx=useFix()?fixCount(col,g.s,g.e):{fixed:0,left:0};
+  const r={v,mean:st.mean,lo:st.min,hi:st.max,empty:!st.n,drops:dropCount(col,g.s,g.e),fixed:fx.fixed};thumbCache.set(key,r);return r}
+
+/* ---------- canvas drawing ---------- */
+function cssPal(){const cs=getComputedStyle(document.documentElement),g=v=>cs.getPropertyValue(v).trim();
+  return {bg:g('--panel'),ink:g('--ink'),muted:g('--muted'),grid:g('--rule'),axis:g('--rule-2'),line:g('--trace'),fix:g('--fix'),selr:g('--selr'),fontUi:g('--font-ui'),fontData:g('--font-data'),
+    tb:{'穩態':g('--steady-bg'),'製程暫態':g('--proc-bg'),'操作事件':g('--op-bg'),'無效':g('--inv-bg')}}}
+const EXPORT_PAL={bg:'#ffffff',ink:'#17201c',muted:'#5f6b66',grid:'#e2e7e4',axis:'#b7c2bd',line:'#1f63b5',fix:'#7a2ff0',fontUi:'"IBM Plex Sans","PingFang TC","Microsoft JhengHei",sans-serif',fontData:'"IBM Plex Mono",Menlo,Consolas,monospace'};
+function niceStep(r,c){const raw=r/c,p=Math.pow(10,Math.floor(Math.log10(raw))),f=raw/p;return (f<1.5?1:f<3?2:f<7?5:10)*p}
+const TSTEPS=[10,30,60,120,300,600,900,1800,3600,7200,10800,21600,43200,86400];
+function yRange(y){let lo=Infinity,hi=-Infinity;for(const v of y)if(Number.isFinite(v)){if(v<lo)lo=v;if(v>hi)hi=v}
+  if(!Number.isFinite(lo)){lo=0;hi=1}if(hi-lo<0.02){const m=(hi+lo)/2;lo=m-0.5;hi=m+0.5}else{const pd=(hi-lo)*0.08;lo-=pd;hi+=pd}return [lo,hi]}
+function yAxis(ctx,P,left,top,pw,ph,lo,hi,count){const st=niceStep(hi-lo,count),dec=Math.max(0,Math.ceil(-Math.log10(st)-1e-9));
+  ctx.font='11px '+P.fontData;ctx.textAlign='right';ctx.textBaseline='middle';
+  for(let v=Math.ceil(lo/st)*st;v<=hi+1e-9;v+=st){const yy=Math.round(top+(hi-v)/(hi-lo)*ph)+.5;ctx.strokeStyle=P.grid;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(left+pw,yy);ctx.stroke();ctx.fillStyle=P.muted;ctx.fillText(v.toFixed(dec),left-8,yy)}}
+function tAxis(ctx,P,left,y0,pw,t0,t1){const span=t1-t0,multi=Math.floor(t0/86400)!==Math.floor(t1/86400),maxT=Math.max(2,Math.min(8,Math.floor(pw/(multi?78:62))));
+  const ts=TSTEPS.find(s=>span/s<=maxT)||86400*7;ctx.textAlign='center';ctx.textBaseline='top';ctx.fillStyle=P.muted;ctx.font='11px '+P.fontData;
+  ctx.strokeStyle=P.axis;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y0+.5);ctx.lineTo(left+pw,y0+.5);ctx.stroke();
+  for(let v=Math.ceil(t0/ts)*ts;v<=t1;v+=ts){const xx=Math.round(left+(v-t0)/(t1-t0)*pw)+.5;ctx.beginPath();ctx.moveTo(xx,y0);ctx.lineTo(xx,y0+4);ctx.stroke();
+    const f=fmt(v);ctx.fillText(ts<60?f.hms:f.hm,xx,y0+7);if(multi)ctx.fillText(f.date,xx,y0+21)}}
+function trace(ctx,P,t,y,X,Y,left,pw,t0,t1,lw){ctx.strokeStyle=P.line;ctx.lineWidth=lw||1.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();
+  const n=t.length,cols=Math.max(1,Math.floor(pw));
+  if(n<=cols*2){let pen=false;for(let i=0;i<n;i++){const v=y[i];if(!Number.isFinite(v)){pen=false;continue}const xx=X(t[i]),yy=Y(v);if(pen)ctx.lineTo(xx,yy);else{ctx.moveTo(xx,yy);pen=true}}}
+  else{let pen=false,c=-1,mn=0,mx=0,has=false;const flush=()=>{if(c<0)return;if(!has){pen=false;return}const xx=left+c+.5;if(pen)ctx.lineTo(xx,Y(mn));else{ctx.moveTo(xx,Y(mn));pen=true}ctx.lineTo(xx,Y(mx))};
+    for(let i=0;i<n;i++){const ci=Math.min(cols-1,Math.max(0,Math.floor((t[i]-t0)/(t1-t0)*cols)));if(ci!==c){flush();c=ci;has=false}const v=y[i];if(Number.isFinite(v)){if(!has){mn=mx=v;has=true}else{if(v<mn)mn=v;if(v>mx)mx=v}}}flush()}
+  ctx.stroke();if(n<=60){ctx.fillStyle=P.line;for(let i=0;i<n;i++){const v=y[i];if(v===v){ctx.beginPath();ctx.arc(X(t[i]),Y(v),2.5,0,7);ctx.fill()}}}}
+function drawChart(cv,o){const W=o.w,H=o.h,dpr=o.dpr||1,ctx=cv.getContext('2d');cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
+  const P=o.pal;ctx.fillStyle=P.bg;ctx.fillRect(0,0,W,H);const t=o.t,n=t.length,t0=n?t[0]:0,t1=n>1&&t[n-1]>t0?t[n-1]:t0+1,multi=Math.floor(t0/86400)!==Math.floor(t1/86400);
+  const top=o.title?54:o.mini?8:10,left=o.mini?48:64,right=o.mini?8:18,bottom=o.mini?(multi?32:20):40,pw=W-left-right,ph=H-top-bottom;
+  if(o.title){ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillStyle=P.ink;ctx.font='600 17px '+P.fontUi;ctx.fillText(o.title,left,24);ctx.fillStyle=P.muted;ctx.font='13px '+P.fontUi;ctx.fillText(o.sub||'',left,43)}
+  const [lo,hi]=yRange(o.y),X=v=>left+(v-t0)/(t1-t0)*pw,Y=v=>top+(hi-v)/(hi-lo)*ph;
+  yAxis(ctx,P,left,top,pw,ph,lo,hi,o.mini?3:5);tAxis(ctx,P,left,top+ph,pw,t0,t1);
+  if(o.unit&&!o.mini){ctx.save();ctx.translate(14,top+ph/2);ctx.rotate(-Math.PI/2);ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=P.muted;ctx.font='12px '+P.fontUi;ctx.fillText(o.unit,0,0);ctx.restore()}
+  ctx.save();ctx.beginPath();ctx.rect(left,top-2,pw,ph+4);ctx.clip();
+  if(o.under){ctx.globalAlpha=.6;trace(ctx,Object.assign({},P,{line:P.muted}),t,o.under,X,Y,left,pw,t0,t1,1);ctx.globalAlpha=1}
+  trace(ctx,P,t,o.y,X,Y,left,pw,t0,t1,o.lw);
+  if(o.mask){ctx.strokeStyle=P.fix;ctx.lineWidth=2.2;ctx.lineJoin='round';ctx.beginPath();
+    for(let i=0;i<n;){if(!o.mask[i]){i++;continue}let j=i;while(j<n&&o.mask[j])j++;const a=Math.max(0,i-1),b=Math.min(n-1,j);let pen=false;
+      for(let k=a;k<=b;k++){const v=o.y[k];if(!Number.isFinite(v)){pen=false;continue}const xx=X(t[k]),yy=Y(v);if(pen)ctx.lineTo(xx,yy);else{ctx.moveTo(xx,yy);pen=true}}
+      if(a===b&&Number.isFinite(o.y[a])){ctx.moveTo(X(t[a])-1.5,Y(o.y[a]));ctx.lineTo(X(t[a])+1.5,Y(o.y[a]))}i=j}
+    ctx.stroke()}
+  ctx.restore();
+  return {left,top,pw,ph,t0,t1,lo,hi,X,Y,W,H}}
+
+/* ---------- overview ---------- */
+let OV=null;
+function renderOverview(){if(!DATA)return;const box=$('ovBox'),W=box.clientWidth,H=box.clientHeight,dpr=devicePixelRatio||1,cv=$('ovCanvas'),ctx=cv.getContext('2d');
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const P=cssPal();ctx.fillStyle=P.bg;ctx.fillRect(0,0,W,H);
+  const t=DATA.t,n=t.length,t0=t[0],t1=t[n-1]>t0?t[n-1]:t0+1,left=64,right=14,top=20,bottom=38,gap=12,pw=W-left-right,ph=(H-top-bottom-gap)/2,X=v=>left+(v-t0)/(t1-t0)*pw;
+  ctx.font='10px '+P.fontData;ctx.textAlign='center';ctx.textBaseline='bottom';
+  SEGS.forEach((g,i)=>{const x0=X(t[g.s]),x1=X(g.e<n?t[g.e]:t1);ctx.fillStyle=P.tb[g.type];ctx.fillRect(x0,top,Math.max(1,x1-x0),H-top-bottom);
+    if(x1-x0>=16){ctx.fillStyle=P.muted;ctx.fillText(p2(i+1),(x0+x1)/2,top-4)}});
+  const panels=[segBy.h,segBy.c].map((col,k)=>{const py=top+k*(ph+gap),vw=view(col,0,n,t0),y=vw.y,[lo,hi]=yRange(y),Y=v=>py+(hi-v)/(hi-lo)*ph;
+    yAxis(ctx,P,left,py,pw,ph,lo,hi,3);ctx.save();ctx.beginPath();ctx.rect(left,py-1,pw,ph+2);ctx.clip();trace(ctx,P,vw.t,y,X,Y,left,pw,t0,t1,1.2);ctx.restore();
+    ctx.textAlign='left';ctx.textBaseline='top';ctx.fillStyle=P.ink;ctx.font='500 12px '+P.fontUi;ctx.fillText(sigLabel(col)+(AVG()>1?` · ${AVG()} s 平均`:''),left+6,py+3);return {col,t:vw.t,y,py,Y}});
+  tAxis(ctx,P,left,H-bottom,pw,t0,t1);
+  const f=SEGS[segIndex(focus.uid)];if(f){const x0=X(t[f.s]),x1=X(f.e<n?t[f.e]:t1);ctx.strokeStyle=P.ink;ctx.lineWidth=2;ctx.strokeRect(x0+1,top+1,Math.max(2,x1-x0-2),H-top-bottom-2)}
+  OV={left,top,pw,ph,gap,t0,t1,W,H,X,panels,bottom};const ov=$('ovOver');ov.width=cv.width;ov.height=cv.height;ov.getContext('2d').setTransform(dpr,0,0,dpr,0,0)}
+function segAtRow(i){let lo=0,hi=SEGS.length-1;while(lo<hi){const m=(lo+hi+1)>>1;if(SEGS[m].s<=i)lo=m;else hi=m-1}return lo}
+function rowAtTime(tv){return Math.min(DATA.n-1,CORE.lowerBound(DATA.t,tv))}
+$('ovOver').addEventListener('mousemove',e=>{if(!OV)return;const r=e.currentTarget.getBoundingClientRect(),x=e.clientX-r.left,ctx=$('ovOver').getContext('2d');ctx.clearRect(0,0,OV.W,OV.H);
+  if(x<OV.left||x>OV.left+OV.pw){$('ovTip').hidden=true;return}const tv=OV.t0+(x-OV.left)/OV.pw*(OV.t1-OV.t0),i=rowAtTime(tv),g=SEGS[segAtRow(i)],P=cssPal();
+  ctx.strokeStyle=P.muted;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,OV.top);ctx.lineTo(x,OV.H-OV.bottom);ctx.stroke();
+  const f=fmt(tv),vals=OV.panels.map(p=>`${p.col} ${fnum(p.y[nearest(p.t,tv)])}`).join(' · ');
+  const tip=$('ovTip');tip.textContent=`${segName(g)} ${g.type} · ${f.date} ${f.hms} · ${vals}`;tip.style.left=Math.min(Math.max(x,150),OV.W-150)+'px';tip.style.top=OV.top+18+'px';tip.hidden=false});
+$('ovOver').addEventListener('mouseleave',()=>{if(OV)$('ovOver').getContext('2d').clearRect(0,0,OV.W,OV.H);$('ovTip').hidden=true});
+$('ovOver').addEventListener('click',e=>{if(!OV)return;const r=e.currentTarget.getBoundingClientRect(),x=e.clientX-r.left;if(x<OV.left||x>OV.left+OV.pw)return;
+  const i=rowAtTime(OV.t0+(x-OV.left)/OV.pw*(OV.t1-OV.t0));setFocus(SEGS[segAtRow(i)].uid,focus.col)});
+
+/* ---------- detail + editor ---------- */
+let geo=null,dS=null;
+function setFocus(uid,col){focus={uid,col:col&&sigCols.includes(col)?col:(sigCols.includes(focus.col)?focus.col:sigCols[0])};splitIdx=null;renderOverview();renderDetail();
+  document.querySelectorAll('.rh.focus,.cell.focus').forEach(x=>x.classList.remove('focus'));document.querySelectorAll(`[data-uid="${uid}"].rh`).forEach(x=>x.classList.add('focus'));
+  const c=document.querySelector(`.cell[data-key="${uid}|${CSS.escape(focus.col)}"]`);if(c)c.classList.add('focus')}
+function renderDetail(){if(!DATA)return;let gi=segIndex(focus.uid);if(gi<0){gi=0;focus.uid=SEGS[0].uid}const g=SEGS[gi],col=focus.col,key=g.uid+'|'+col;
+  $('dTitle').textContent=`${segName(g)} ${g.label} · ${sigLabel(col)}`;$('dPill').textContent=g.type;$('dPill').className='pill '+TCLS[g.type];
+  const t=DATA.t,a=fmt(t[g.s]),b=fmt(t[g.e-1]);$('dMeta').textContent=`${a.date} ${a.hms} → ${b.date} ${b.hms} · ${((t[g.e-1]-t[g.s])/60).toFixed(1)} min${g.op?' · '+g.op:''}`;
+  $('sigTabs').innerHTML=sigCols.map(c=>`<button type="button" class="chip" role="tab" data-col="${esc(c)}" aria-pressed="${c===col}" aria-selected="${c===col}">${esc(c)}</button>`).join('');
+  const Rp=useFix()&&REPAIR[col];dS=view(col,g.s,g.e);const st=stats(dS.y),dr=dropCount(col,g.s,g.e),fx=fixCount(col,g.s,g.e);
+  $('dStats').innerHTML=`<span><b>${avgName()}</b></span><span>平均 <b>${fnum(st.mean)}</b></span><span>最小 <b>${fnum(st.min)}</b></span><span>最大 <b>${fnum(st.max)}</b></span><span>標準差 <b>${fnum(st.sd,3)}</b></span><span>${AVG()>1?'平均點數':'筆數'} <b>${dS.y.length.toLocaleString()}</b></span><span>漂移 <b>${fnum(CORE.slopePerHour(dS.t,dS.y,0,dS.y.length),3)}</b> /h</span>`+(dr&&!(Rp&&fx.fixed)?`<span>已排除跳點 <b>${dr.toLocaleString()}</b></span>`:'')+(Rp&&fx.fixed?`<span style="color:var(--fix)">已修補 <b style="color:inherit">${fx.fixed.toLocaleString()}</b> 點</span>`:'')+(Rp&&fx.left?`<span>未修補 <b>${fx.left.toLocaleString()}</b> 點</span>`:'');
+  const box=$('dBox'),w=box.clientWidth,h=box.clientHeight,dpr=devicePixelRatio||1;geo=drawChart($('dCanvas'),{t:dS.t,y:dS.y,w,h,dpr,pal:cssPal(),under:dS.under||null,mask:dS.mask||null,unit:UNIT[col]});
+  const ov=$('dOver');ov.width=Math.round(w*dpr);ov.height=Math.round(h*dpr);ov.getContext('2d').setTransform(dpr,0,0,dpr,0,0);$('dTip').hidden=true;if(mSel&&(mSel[0]<g.s||mSel[1]>g.e))mSel=null;drawSplitMark();updateRepairUI();
+  $('dCanvas').setAttribute('aria-label',`${segName(g)} ${g.label} 的 ${col} 時間序列`);
+  $('eType').value=g.type;$('eLabel').value=g.label;$('eOp').value=g.op;$('eWhy').textContent=g.why?`自動判斷：${g.why}`:'手動調整';
+  $('eMergePrev').disabled=gi===0;$('eMergeNext').disabled=gi===SEGS.length-1;
+  $('eSplit').disabled=splitIdx===null;$('eSplit').textContent=splitIdx===null?'在圖上點一下選切分點':`在 ${fmt(DATA.t[splitIdx]).hms} 切分`;
+  $('dToggle').textContent=sel.has(key)?'取消選取這張圖':'選取這張圖'}
+function nearest(t,x){let lo=0,hi=t.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(t[m]<x)lo=m;else hi=m}return x-t[lo]<t[hi]-x?lo:hi}
+function drawSplitMark(){if(!geo)return;const ctx=$('dOver').getContext('2d'),P=cssPal();
+  if(mSel){const x0=geo.X(DATA.t[mSel[0]]),x1=geo.X(DATA.t[mSel[1]-1]);ctx.fillStyle=P.selr;ctx.fillRect(x0,geo.top,Math.max(2,x1-x0),geo.ph);ctx.strokeStyle=P.fix;ctx.lineWidth=1;ctx.strokeRect(x0+.5,geo.top+.5,Math.max(2,x1-x0)-1,geo.ph-1)}
+  if(splitIdx===null)return;const xx=geo.X(DATA.t[splitIdx]);ctx.save();ctx.strokeStyle=P.ink;ctx.setLineDash([5,4]);ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(xx,geo.top);ctx.lineTo(xx,geo.top+geo.ph);ctx.stroke();ctx.restore()}
+let drag=null;
+function rowAtX(x){return rowAtTime(geo.t0+(Math.min(Math.max(x,geo.left),geo.left+geo.pw)-geo.left)/geo.pw*(geo.t1-geo.t0))}
+$('dOver').addEventListener('mousedown',e=>{if(!geo||!dS)return;const r=e.currentTarget.getBoundingClientRect(),x=e.clientX-r.left;if(x<geo.left||x>geo.left+geo.pw)return;drag={x0:x,x1:x};e.preventDefault()});
+window.addEventListener('mouseup',e=>{if(!drag)return;const d=drag;drag=null;if(!geo||!dS)return;const g=SEGS[segIndex(focus.uid)];
+  if(Math.abs(d.x1-d.x0)<5){const i=rowAtX(d.x0);splitIdx=(i<=g.s||i>=g.e-1)?null:i;renderDetail();return}
+  const a=rowAtX(Math.min(d.x0,d.x1)),b=rowAtX(Math.max(d.x0,d.x1));mSel=[Math.max(g.s,a),Math.min(g.e,b+1)];renderDetail()});
+$('dOver').addEventListener('mousemove',e=>{if(!geo||!dS)return;const r=e.currentTarget.getBoundingClientRect(),x=e.clientX-r.left,ctx=$('dOver').getContext('2d');ctx.clearRect(0,0,geo.W,geo.H);drawSplitMark();
+  if(drag){drag.x1=Math.min(Math.max(x,geo.left),geo.left+geo.pw);const P=cssPal(),x0=Math.min(drag.x0,drag.x1),w=Math.abs(drag.x1-drag.x0);ctx.fillStyle=P.selr;ctx.fillRect(x0,geo.top,w,geo.ph);ctx.strokeStyle=P.fix;ctx.strokeRect(x0+.5,geo.top+.5,Math.max(1,w-1),geo.ph-1)}
+  if(x<geo.left||x>geo.left+geo.pw){$('dTip').hidden=true;return}const tv=geo.t0+(x-geo.left)/geo.pw*(geo.t1-geo.t0),i=nearest(dS.t,tv),v=dS.y[i],xx=geo.X(dS.t[i]),P=cssPal();
+  ctx.strokeStyle=P.muted;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(xx,geo.top);ctx.lineTo(xx,geo.top+geo.ph);ctx.stroke();
+  const tip=$('dTip'),f=fmt(dS.t[i]);tip.textContent=`${f.date} ${f.hms} · ${Number.isFinite(v)?v.toFixed(2):'無數據'}${AVG()>1?`（${AVG()} s 平均）`:''}`;
+  if(Number.isFinite(v)){const yy=geo.Y(v);ctx.fillStyle=P.line;ctx.strokeStyle=P.bg;ctx.lineWidth=2;ctx.beginPath();ctx.arc(xx,yy,4,0,7);ctx.fill();ctx.stroke();tip.style.top=yy+'px'}else tip.style.top=geo.top+20+'px';
+  tip.style.left=Math.min(Math.max(xx,70),geo.W-70)+'px';tip.hidden=false});
+$('dOver').addEventListener('mouseleave',()=>{if(!geo)return;$('dOver').getContext('2d').clearRect(0,0,geo.W,geo.H);drawSplitMark();$('dTip').hidden=true});
+$('sigTabs').addEventListener('click',e=>{const b=e.target.closest('[data-col]');if(b)setFocus(focus.uid,b.dataset.col)});
+$('eType').addEventListener('change',e=>{const g=SEGS[segIndex(focus.uid)];g.type=e.target.value;g.why='';autoLabels();renderAll()});
+$('eLabel').addEventListener('change',e=>{const g=SEGS[segIndex(focus.uid)];g.label=e.target.value.trim();g.labelAuto=!g.label;autoLabels();renderAll()});
+$('eOp').addEventListener('change',e=>{const g=SEGS[segIndex(focus.uid)];g.op=e.target.value.trim();renderAll()});
+function dropSel(uid){for(const k of [...sel])if(k.startsWith(uid+'|'))sel.delete(k)}
+$('eMergePrev').addEventListener('click',()=>{const i=segIndex(focus.uid);if(i<1)return;const p=SEGS[i-1],g=SEGS[i];p.e=g.e;p.why='手動合併';dropSel(g.uid);SEGS.splice(i,1);focus.uid=p.uid;splitIdx=null;autoLabels();renderAll()});
+$('eMergeNext').addEventListener('click',()=>{const i=segIndex(focus.uid);if(i<0||i>=SEGS.length-1)return;const g=SEGS[i],nx=SEGS[i+1];g.e=nx.e;g.why='手動合併';dropSel(nx.uid);SEGS.splice(i+1,1);splitIdx=null;autoLabels();renderAll()});
+$('eSplit').addEventListener('click',()=>{if(splitIdx===null)return;const i=segIndex(focus.uid),g=SEGS[i];if(splitIdx<=g.s||splitIdx>=g.e)return;
+  const ng={uid:UID++,s:splitIdx,e:g.e,type:g.type,why:'手動切分',label:'',labelAuto:true,op:''};g.e=splitIdx;g.why='手動切分';SEGS.splice(i+1,0,ng);splitIdx=null;autoLabels();renderAll()});
+$('dToggle').addEventListener('click',()=>toggle(focus.uid+'|'+focus.col));
+
+/* ---------- repair ---------- */
+const METHOD_NAME={linear:'線性',exp:'指數',poly:'多項式',sine:'弦函數',log:'對數'};
+const METHOD_DESC={linear:'把斷點前後最近的兩個正常點用直線連起來。最保守，短的斷點建議用這個。',
+  exp:'用斷點前後各 ±N 秒的數據找一條指數曲線（越變越快或越變越慢，像升溫、被稀釋時的形狀）。數據有 0 或負值時會先整體平移再算。',
+  poly:'用斷點前後各 ±N 秒的數據找一條 n 階多項式曲線（可以彎一兩次的平滑曲線）。',
+  sine:'用斷點前後各 ±N 秒的數據找一條正弦波（適合有規律起伏的訊號），波的週期會自動找最貼合的。',
+  log:'用斷點前後各 ±N 秒的數據找一條對數曲線（一開始變化快、後來越來越平）。'};
+const method=()=>document.querySelector('input[name=fm]:checked').value;
+function detOpts(){const v=id=>parseFloat($(id).value);return {drop:Number.isFinite(v('rDrop'))?v('rDrop'):DROP(),code:$('dCode').checked,gap:$('dGap').checked,ext:$('dExt').checked?Math.max(0,v('extN')|0):0,
+  spike:$('dSpike').checked,win:v('hWin')||15,k:v('hK')||5,minDev:Number.isFinite(v('hMin'))?v('hMin'):0.5}}
+function fillOpts(){const v=id=>parseFloat($(id).value);return {method:method(),deg:+$('polyDeg').value,ctx:v('ctxW')||60,align:$('align').checked,maxGap:v('maxGap')||300}}
+function ensureRepair(col){let Rp=REPAIR[col];if(!Rp){const y0=cleanFull(col);Rp=REPAIR[col]={y0,y:Float64Array.from(y0),code:new Uint8Array(DATA.n),runs:[]}}return Rp}
+function resetRange(col,s,e){const Rp=REPAIR[col];if(!Rp)return;for(let i=s;i<e;i++){Rp.y[i]=Rp.y0[i];Rp.code[i]=0}Rp.runs=Rp.runs.filter(r=>r.b<s||r.a>=e)}
+function addRange(Rp,s,e){const rs=(Rp.ranges||[]).concat([[s,e]]).sort((a,b)=>a[0]-b[0]),out=[];for(const r of rs){const l=out[out.length-1];if(l&&r[0]<=l[1])l[1]=Math.max(l[1],r[1]);else out.push(r.slice())}Rp.ranges=out}
+function subRange(Rp,s,e){if(!Rp||!Rp.ranges)return;const out=[];for(const [a,b] of Rp.ranges){if(b<=s||a>=e){out.push([a,b]);continue}if(a<s)out.push([a,s]);if(b>e)out.push([e,b])}Rp.ranges=out}
+function repairRange(col,s,e){const Rp=ensureRepair(col);resetRange(col,s,e);addRange(Rp,s,e);
+  const bad=CORE.detectBad(DATA.t,DATA.cols[col],s,e,detOpts(),MANUAL[col]),fo=fillOpts(),runs=CORE.fillRuns(DATA.t,Rp.y0,bad,s,e,fo,Rp.y);
+  for(let i=s;i<e;i++)Rp.code[i]=bad[i];for(const r of runs){r.col=col;r.deg=fo.deg;Rp.runs.push(r)}Rp.runs.sort((a,b)=>a.a-b.a)}
+function pruneRepair(){for(const c of Object.keys(REPAIR))if(!REPAIR[c].runs.length)delete REPAIR[c]}
+function scopeTargets(){const sc=$('rScope').value,g=SEGS[segIndex(focus.uid)];return {cols:sc==='all'?sigCols.slice():[focus.col],s:sc==='seg'?g.s:0,e:sc==='seg'?g.e:DATA.n}}
+function afterRepair(changed){pruneRepair();REPVER++;const cols=changed||Object.keys(REPAIR);bump(cols);updateCells(cols);refresh();
+  if(cols.includes(segBy.h)||cols.includes(segBy.c))renderOverview();if(cols.includes(focus.col))renderDetail();else updateRepairUI()}
+async function runRepair(cols,ranges){if(REPBUSY)return;REPBUSY=true;$('rApply').disabled=true;
+  try{for(let i=0;i<cols.length;i++){$('rSum').textContent=`偵測與修補中：${cols[i]}（${i+1}/${cols.length}）…`;await tick();for(const [a,b] of ranges)repairRange(cols[i],a,b)}afterRepair(cols)}
+  catch(err){$('rSum').textContent='修補失敗：'+(err&&err.message||err)}finally{REPBUSY=false;$('rApply').disabled=false}}
+$('rApply').addEventListener('click',()=>{if(!DATA)return;const T=scopeTargets();runRepair(T.cols,[[T.s,T.e]])});
+$('rUndo').addEventListener('click',()=>{if(!DATA)return;const T=scopeTargets();for(const c of T.cols){resetRange(c,T.s,T.e);subRange(REPAIR[c],T.s,T.e);if(MANUAL[c])MANUAL[c]=MANUAL[c].filter(([a,b])=>b<=T.s||a>=T.e)}afterRepair(T.cols)});
+$('mMark').addEventListener('click',()=>{if(!mSel||!DATA)return;const col=focus.col,g=SEGS[segIndex(focus.uid)];(MANUAL[col]=MANUAL[col]||[]).push(mSel.slice());mSel=null;runRepair([col],[[g.s,g.e]])});
+$('mSeg').addEventListener('click',()=>{if(!DATA)return;const g=SEGS[segIndex(focus.uid)],cols=$('rScope').value==='all'?sigCols.slice():[focus.col];for(const c of cols)(MANUAL[c]=MANUAL[c]||[]).push([g.s,g.e]);runRepair(cols,[[g.s,g.e]])});
+$('mClear').addEventListener('click',()=>{if(!DATA)return;const col=focus.col,rs=MANUAL[col]||[];delete MANUAL[col];if(REPAIR[col])for(const [a,b] of rs)repairRange(col,a,b);afterRepair([col])});
+let liveT=null;
+function liveRerun(){clearTimeout(liveT);liveT=setTimeout(async()=>{if(!DATA)return;if(REPBUSY){liveRerun();return}const cols=Object.keys(REPAIR);if(!cols.length)return;REPBUSY=true;
+  try{for(let i=0;i<cols.length;i++){const c=cols[i];$('rSum').textContent=`依新設定重新修補：${c}（${i+1}/${cols.length}）…`;await tick();const rs=(REPAIR[c]&&REPAIR[c].ranges||[]).slice();for(const [a,b] of rs)repairRange(c,a,b)}afterRepair(cols)}
+  catch(err){$('rSum').textContent='修補失敗：'+(err&&err.message||err)}finally{REPBUSY=false}},250)}
+['dCode','rDrop','dExt','extN','dGap','dSpike','hWin','hK','hMin','polyDeg','ctxW','align','maxGap'].forEach(id=>{const el=$(id);el.addEventListener('change',()=>{updateRepairUI();liveRerun()});if(el.type==='number')el.addEventListener('input',()=>{updateRepairUI();liveRerun()})});
+document.querySelectorAll('input[name=fm]').forEach(r=>r.addEventListener('change',()=>{updateRepairUI();if(!DATA)return;if(Object.keys(REPAIR).length)liveRerun();else{const T=scopeTargets();runRepair(T.cols,[[T.s,T.e]])}}));
+$('useFix').addEventListener('change',()=>{if(!DATA)return;REPVER++;updateCells(Object.keys(REPAIR));refresh();renderOverview();renderDetail()});
+function updateRepairUI(){const m=method();$('mDesc').textContent=METHOD_DESC[m].replace('±N','±'+($('ctxW').value||60)).replace('n 階',$('polyDeg').value+' 階');
+  if(!DATA)return;$('mMark').disabled=!mSel;$('mMark').textContent=mSel?`把 ${fmt(DATA.t[mSel[0]]).hms}–${fmt(DATA.t[mSel[1]-1]).hms} 標為不合理`:'把框選範圍標為不合理';
+  const man=MANUAL[focus.col];$('mClear').disabled=!(man&&man.length);
+  const cols=Object.keys(REPAIR);if(!cols.length){$('rSum').innerHTML='尚未修補。';return}
+  const parts=cols.map(c=>{let f=0,l=0;for(const r of REPAIR[c].runs){const k=r.b-r.a+1;if(r.filled)f+=k;else l+=k}return `<b>${esc(c)}</b> 補了 ${f.toLocaleString()} 點${l?`、未補 ${l.toLocaleString()} 點`:''}`});
+  let detail='';const Rp=REPAIR[focus.col];
+  if(Rp){const by={},notes={};for(let i=0;i<DATA.n;i++){const c=Rp.code[i];if(c)by[CORE.CODE_NAME[c]]=(by[CORE.CODE_NAME[c]]||0)+1}
+    for(const r of Rp.runs)if(r.note){const k=r.note.replace(/斷點 \d+ 秒，/,'');notes[k]=(notes[k]||0)+1}
+    detail=`<br>${esc(focus.col)} 的不合理點：`+Object.entries(by).map(([k,v])=>`${k} ${v.toLocaleString()}`).join('、')+
+      (Object.keys(notes).length?'；'+Object.entries(notes).map(([k,v])=>`${v} 段${k}`).join('、'):'')}
+  $('rSum').innerHTML='修補結果：'+parts.join('；')+detail+(useFix()?'':'<br><span class="err">目前圖表、統計和匯出用的是原始數據（上方勾選框沒勾）</span>')}
+
+/* ---------- matrix ---------- */
+const MINIGEO=new Map();
+function drawCell(c,P,dpr){const g=SEGS[segIndex(+c.dataset.uid)];if(!g)return;const box=c.querySelector('.mini'),w=box.clientWidth,h=box.clientHeight;if(!w||!h)return;
+  const th=thumb(g,c.dataset.col);MINIGEO.set(c.dataset.key,drawChart(box.querySelector('canvas'),{t:th.v.t,y:th.v.y,mask:th.v.mask,w,h,dpr:dpr||Math.min(2,devicePixelRatio||1),pal:P||cssPal(),mini:true,lw:1.2}));c.dataset.drawn='1'}
+const IO=('IntersectionObserver' in window)?new IntersectionObserver(es=>{const P=cssPal();for(const en of es)if(en.isIntersecting){const c=en.target;if(!c.dataset.drawn&&!c.hidden)drawCell(c,P)}},{rootMargin:'400px 0px'}):null;
+function inView(el){const r=el.getBoundingClientRect(),H=window.innerHeight||document.documentElement.clientHeight;return r.width>0&&r.bottom>-400&&r.top<H+400}
+function drawVisible(force){if(!DATA)return;const P=cssPal(),dpr=Math.min(2,devicePixelRatio||1);
+  document.querySelectorAll('.cell').forEach(c=>{if(force)delete c.dataset.drawn;if(c.dataset.drawn||c.hidden)return;if(!IO||inView(c))drawCell(c,P,dpr)})}
+function cellText(c){const g=SEGS[segIndex(+c.dataset.uid)];if(!g)return;const th=thumb(g,c.dataset.col),rng=th.empty?'全為跳點':`${fnum(th.lo)} – ${fnum(th.hi)}`,drop=th.fixed?` · 修補 ${th.fixed}`:th.drops?` · 跳點 ${th.drops}`:'';
+  c.dataset.rng=rng+drop;c.querySelector('.rd').textContent=rng+drop;c.querySelector('.mv').textContent='≈ '+fnum(th.mean)}
+function updateCells(cols){const set=cols?new Set(cols):null;document.querySelectorAll('.cell').forEach(c=>{if(set&&!set.has(c.dataset.col))return;cellText(c);delete c.dataset.drawn});drawVisible()}
+function buildMatrix(){const M=$('matrix');if(!DATA){M.innerHTML='';return}
+  M.style.gridTemplateColumns=`220px repeat(${sigCols.length},minmax(150px,1fr))`;M.style.minWidth=(220+150*sigCols.length)+'px';
+  let h='<div class="ch" role="columnheader">分段</div>';
+  for(const c of sigCols)h+=`<div class="ch" role="columnheader"><label><input type="checkbox" class="colchk" data-col="${esc(c)}" aria-label="選取整欄 ${esc(c)}"><span style="overflow-wrap:anywhere">${esc(sigLabel(c))}</span></label><span class="hint">整欄</span></div>`;
+  const t=DATA.t;
+  SEGS.forEach((g,gi)=>{const a=fmt(t[g.s]),b=fmt(t[g.e-1]);
+    h+=`<div class="rh" data-uid="${g.uid}" data-type="${g.type}" role="rowheader"><div class="top"><label><input type="checkbox" class="rowchk" data-uid="${g.uid}" aria-label="選取 ${segName(g)} 整列"><span class="segid">${segName(g)}</span></label><span class="pill ${TCLS[g.type]}">${g.type}</span></div>
+      <div class="lbl">${esc(g.label)}</div><div class="meta mono">${a.date} ${a.hm} → ${b.date===a.date?'':b.date+' '}${b.hm}</div><div class="meta"><span class="mono">${((t[g.e-1]-t[g.s])/60).toFixed(0)} min</span>${g.why?' · '+esc(g.why):''}</div>${g.op?`<div class="op">${esc(g.op)}</div>`:''}</div>`;
+    for(const c of sigCols){const key=g.uid+'|'+c,th=thumb(g,c),rng=th.empty?'全為跳點':`${fnum(th.lo)} – ${fnum(th.hi)}`,drop=th.fixed?` · 修補 ${th.fixed}`:th.drops?` · 跳點 ${th.drops}`:'';
+      h+=`<div class="cell" role="checkbox" tabindex="0" aria-checked="false" data-key="${esc(key)}" data-uid="${g.uid}" data-col="${esc(c)}" data-type="${g.type}" data-rng="${esc(rng+drop)}" aria-label="${segName(g)} ${esc(g.label)} ${esc(c)}">
+        <div class="ctop"><span style="display:flex;gap:6px;align-items:center"><span class="box"></span><span class="mono mv">≈ ${fnum(th.mean)}</span></span><button type="button" class="zoom">放大</button></div>
+        <div class="mini"><canvas aria-hidden="true"></canvas><div class="vline" hidden></div></div><div class="cfoot mono"><span class="rd">${esc(rng+drop)}</span></div></div>`}});
+  M.innerHTML=h;MINIGEO.clear();if(IO){IO.disconnect();M.querySelectorAll('.cell').forEach(c=>IO.observe(c))}drawVisible()}
+const M=$('matrix');
+M.addEventListener('click',e=>{const z=e.target.closest('.zoom');if(z){e.stopPropagation();const c=z.closest('.cell');setFocus(+c.dataset.uid,c.dataset.col);$('dBox').scrollIntoView({block:'nearest',behavior:'smooth'});return}
+  const c=e.target.closest('.cell');if(c){toggle(c.dataset.key);return}const rh=e.target.closest('.rh');if(rh&&!e.target.closest('label'))setFocus(+rh.dataset.uid,focus.col)});
+M.addEventListener('keydown',e=>{const c=e.target.closest('.cell');if(c&&e.target===c&&(e.key===' '||e.key==='Enter')){e.preventDefault();toggle(c.dataset.key)}});
+M.addEventListener('change',e=>{const x=e.target;if(x.classList.contains('rowchk'))for(const c of sigCols){const k=x.dataset.uid+'|'+c;x.checked?sel.add(k):sel.delete(k)}
+  if(x.classList.contains('colchk'))for(const g of visibleSegs()){const k=g.uid+'|'+x.dataset.col;x.checked?sel.add(k):sel.delete(k)}refresh()});
+M.addEventListener('mousemove',e=>{const c=e.target.closest('.cell');if(!c)return;const G=MINIGEO.get(c.dataset.key),box=c.querySelector('.mini');if(!G||!box)return;
+  const r=box.getBoundingClientRect(),x=e.clientX-r.left,vl=box.querySelector('.vline'),rd=c.querySelector('.rd');
+  if(x<G.left||x>G.left+G.pw||e.clientY<r.top||e.clientY>r.bottom){vl.hidden=true;rd.textContent=c.dataset.rng;return}
+  const g=SEGS[segIndex(+c.dataset.uid)];if(!g)return;const th=thumb(g,c.dataset.col),tv=G.t0+(x-G.left)/G.pw*(G.t1-G.t0),i=nearest(th.v.t,tv),v=th.v.y[i];
+  vl.style.left=G.X(th.v.t[i])+'px';vl.style.top=G.top+'px';vl.style.height=G.ph+'px';vl.hidden=false;rd.textContent=`${fmt(th.v.t[i]).hms} · ${Number.isFinite(v)?v.toFixed(2):'無數據'}`});
+M.addEventListener('mouseout',e=>{const c=e.target.closest('.cell');if(!c||c.contains(e.relatedTarget))return;const vl=c.querySelector('.vline');if(vl)vl.hidden=true;c.querySelector('.rd').textContent=c.dataset.rng});
+function visibleSegs(){return SEGS.filter(g=>filter==='all'||g.type===filter)}
+function buildChips(){const types=['all','穩態','製程暫態','操作事件','無效'];
+  $('chips').innerHTML=types.map(t=>`<button type="button" class="chip" data-f="${t}" aria-pressed="${filter===t}">${t==='all'?'全部':t}<span class="n">${t==='all'?SEGS.length:SEGS.filter(g=>g.type===t).length}</span></button>`).join('')}
+$('chips').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;filter=b.dataset.f;refresh()});
+function toggle(key){sel.has(key)?sel.delete(key):sel.add(key);refresh()}
+function validSel(){const uids=new Set(SEGS.map(g=>String(g.uid)));return [...sel].filter(k=>{const i=k.indexOf('|');return uids.has(k.slice(0,i))&&sigCols.includes(k.slice(i+1))})}
+function refresh(){if(!DATA)return;persistSegs();if(READY&&READY.sig!==readySig())setReady(null);
+  document.querySelectorAll('.chip[data-f]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.f===filter)));
+  const vis=new Set(visibleSegs().map(g=>String(g.uid)));document.querySelectorAll('.rh,.cell').forEach(el=>el.hidden=!vis.has(el.dataset.uid));drawVisible();
+  document.querySelectorAll('.cell').forEach(c=>c.setAttribute('aria-checked',String(sel.has(c.dataset.key))));
+  document.querySelectorAll('.rowchk').forEach(cb=>{const n=sigCols.filter(c=>sel.has(cb.dataset.uid+'|'+c)).length;cb.checked=n===sigCols.length;cb.indeterminate=n>0&&n<sigCols.length});
+  document.querySelectorAll('.colchk').forEach(cb=>{const vs=[...vis],n=vs.filter(u=>sel.has(u+'|'+cb.dataset.col)).length;cb.checked=vs.length>0&&n===vs.length;cb.indeterminate=n>0&&n<vs.length});
+  const ks=validSel(),segs=[...new Set(ks.map(k=>k.slice(0,k.indexOf('|'))))].map(u=>SEGS[segIndex(+u)]);
+  const step=AVG(),rows=segs.reduce((a,g)=>a+(step===1?g.e-g.s:Math.ceil((DATA.t[g.e-1]-DATA.t[g.s]+1)/step)),0);
+  $('selSum').innerHTML=ks.length?`已選 <b>${ks.length}</b> 張圖 · <b>${segs.length}</b> 段 · 數據約 <b>${rows.toLocaleString()}</b> 列`:'尚未選取，點縮圖即可勾選';
+  const g=SEGS[segIndex(focus.uid)];if(g)$('dToggle').textContent=sel.has(focus.uid+'|'+focus.col)?'取消選取這張圖':'選取這張圖'}
+$('selSteady').addEventListener('click',()=>{SEGS.filter(g=>g.type==='穩態').forEach(g=>sigCols.forEach(c=>sel.add(g.uid+'|'+c)));refresh()});
+$('selClear').addEventListener('click',()=>{sel.clear();refresh()});
+$('incImg').addEventListener('change',()=>refresh());
+document.querySelectorAll('input[name=res]').forEach(r=>r.addEventListener('change',()=>{saveParams();if(!DATA)return;updateCells(null);refresh();renderOverview();renderDetail()}));
+
+function renderFileInfo(){const t=DATA.t,a=fmt(t[0]),b=fmt(t[DATA.n-1]);
+  $('fileinfo').innerHTML=`<b>${esc(FILE)}</b> · ${DATA.n.toLocaleString()} 筆 · ${a.date} ${a.hm} → ${b.date} ${b.hm}（${((t[DATA.n-1]-t[0])/3600).toFixed(1)} h）· ${SEGS.length} 段${DATA.regular&&DATA.regular.inserted?` · 補齊 ${DATA.regular.inserted.toLocaleString()} 個缺少的時間點（取樣間隔 ${DATA.regular.step} s）`:''}${DATA.regular&&DATA.regular.dup?` · 合併 ${DATA.regular.dup} 筆重複時間`:''}${DATA.bad?` · 略過 ${DATA.bad} 列無法解析的時間`:''}`+(IS_SAMPLE?' <span class="sample">範例檔，拖入你的 CSV 即可取代</span>':'')}
+function renderAll(){renderFileInfo();buildChips();buildMatrix();refresh();renderOverview();setFocus(focus.uid,focus.col)}
+
+/* ---------- drag & drop ---------- */
+const DB=$('dropbar');let dragDepth=0;
+document.addEventListener('dragenter',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){dragDepth++;DB.classList.add('over')}});
+document.addEventListener('dragleave',()=>{dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)DB.classList.remove('over')});
+document.addEventListener('dragover',e=>{e.preventDefault()});
+document.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;DB.classList.remove('over');const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)loadFile(f)});
+$('fileIn').addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f);e.target.value=''});
+
+/* ---------- export ---------- */
+const CL=(window.claude&&typeof window.claude.use==='function')?window.claude:null;
+const TOP=(()=>{try{return window.top===window.self}catch(e){return false}})();
+const dlP=CL?CL.use('downloads'):Promise.resolve(null);
+let DL=null,DLDONE=false,READY=null;
+dlP.then(d=>{DL=d;DLDONE=true;dlHint()},()=>{DLDONE=true;dlHint()});
+function noDlMsg(){return TOP?'這個工具現在是單獨開在一個分頁裡，這種開法沒有下載功能。請回到 claude.ai，從對話裡的卡片或 Artifact 清單開啟這個工具，再按「產生 Excel」。'
+  :'這個檢視沒有下載功能。請在 claude.ai 網站或 Claude App 裡開啟這個工具再試。'}
+async function dlHint(){const el=$('dlState');if(!DLDONE){el.textContent='';return}
+  if(!DL){el.textContent=TOP?'單獨分頁無法下載，請從 claude.ai 開啟':'這個檢視無法下載';el.title=noDlMsg();return}
+  let st='';try{const pm=CL&&await CL.use('permissions');if(pm)st=await pm.state('downloads')}catch(e){}
+  el.textContent=st==='denied'?'下載權限目前是關閉的':'';$('permBtn').hidden=st!=='denied'}
+function readySig(){return [validSel().sort().join(','),AVG(),REPVER,useFix(),$('incImg').checked,SEGS.map(g=>g.uid+':'+g.s+':'+g.e+':'+g.type+':'+g.label+':'+g.op).join(';')].join('#')}
+function setReady(r){READY=r;$('dlBtn').hidden=!r;$('exportBtn').classList.toggle('primary',!r);$('dlBtn').classList.toggle('primary',!!r);if(r)$('dlBtn').textContent=`下載 Excel（${(r.blob.size/1e6).toFixed(1)} MB）`}
+function showDlError(e){const c=(e&&e.code)||'unknown',M={declined:'你取消了下載，可以再按一次「下載 Excel」。',rate_limited:'已經有一個下載確認視窗開著，先處理那個視窗再試。',
+    too_large:'檔案太大：改用較長的平均（例如 60 s）或少選幾段，再產生一次。',extension_not_enabled:'這個檢視目前不允許下載 .xlsx 檔。',rejected_extension:'這個檢視不接受 .xlsx 檔。',
+    not_granted:'下載權限沒有開啟。按「開啟權限設定」把下載打開後，再按「下載 Excel」。',capability_disabled:'下載功能被停用了。按「開啟權限設定」檢查。',unavailable:noDlMsg(),bad_request:'下載請求有誤。'};
+  say(`${M[c]||'下載失敗。'}（錯誤代碼：${c}${e&&e.message?'；'+e.message:''}）`,true);if(c==='not_granted'||c==='capability_disabled')$('permBtn').hidden=false}
+$('dlBtn').addEventListener('click',async()=>{if(!READY)return;const d=DL||await dlP;if(!d){say(noDlMsg(),true);return}
+  say('請在跳出的視窗確認下載…');try{const r=await d.save({filename:READY.name,data:READY.blob});say(r&&r.status==='delivered'?`已送出 ${READY.name}`:`已下載 ${READY.name}`)}catch(e){showDlError(e)}});
+$('permBtn').addEventListener('click',async()=>{try{const pm=CL&&await CL.use('permissions');if(!pm)throw new Error('no');await pm.manage();await dlHint();say('權限設定已關閉，請再按「下載 Excel」。')}
+  catch(e){say('無法開啟權限面板。請從 Artifact 視窗右上角的選單找「權限」，把下載打開。',true)}});
+function say(msg,err){const s=$('status');s.hidden=false;s.textContent=msg;s.classList.toggle('err',!!err)}
+const tick=()=>new Promise(r=>setTimeout(r,0));
+function plotPNG(g,col){const t=DATA.t,a=fmt(t[g.s]),b=fmt(t[g.e-1]),dr=dropCount(col,g.s,g.e),cv=document.createElement('canvas'),Rp=useFix()&&REPAIR[col],fx=Rp?fixCount(col,g.s,g.e):{fixed:0},vw=view(col,g.s,g.e);
+  drawChart(cv,{t:vw.t,y:vw.y,mask:vw.mask,unit:UNIT[col],w:900,h:320,dpr:2,pal:EXPORT_PAL,lw:1.6,title:`${segName(g)} ${g.label} · ${sigLabel(col)} · ${avgName()}`,
+    sub:`${g.type}${g.op?' · '+g.op:''} · ${a.date} ${a.hms} → ${b.date} ${b.hms}${fx.fixed?` · 紫色為修補值 ${fx.fixed} 點`:dr?` · 已排除跳點 ${dr} 筆`:''}`});return cv.toDataURL('image/png')}
+async function doExport(){
+  const ks=validSel();if(!DATA||!ks.length){say('先勾選至少一張圖',true);return}
+  if(typeof ExcelJS==='undefined'){say('Excel 元件沒有載入，請重新整理頁面再試',true);return}
+  const items=[];for(const g of SEGS)for(const c of sigCols)if(sel.has(g.uid+'|'+c))items.push({g,col:c});
+  const btn=$('exportBtn');btn.disabled=true;setReady(null);
+  try{
+    const step=AVG(),res=step===1?'1s':'avg',incImg=$('incImg').checked,t=DATA.t,HF={name:'Arial',bold:true},TF='yyyy/mm/dd hh:mm:ss';
+    const wb=new ExcelJS.Workbook();wb.creator='反應器記錄分段工具';wb.created=new Date();
+    say('整理分段表…');await tick();
+    const st=wb.addWorksheet('分段表',{views:[{state:'frozen',ySplit:1}]});
+    st.columns=[{header:'分段',width:7},{header:'分類',width:10},{header:'名稱',width:16},{header:'實際操作',width:22},{header:'判斷依據',width:14},{header:'開始',width:20},{header:'結束',width:20},{header:'時長 (min)',width:10},{header:'筆數',width:9},
+      {header:segBy.h+' 平均',width:11},{header:segBy.c+' 平均',width:11},{header:segBy.h+' 漂移 (%/h)',width:14},{header:segBy.c+' 漂移 (%/h)',width:14}];
+    for(const g of SEGS){const vh=view(segBy.h,g.s,g.e),vc=view(segBy.c,g.s,g.e),yh=vh.y,yc=vc.y;
+      st.addRow([segName(g),g.type,g.label,g.op,g.why,xl(t[g.s]),xl(t[g.e-1]),(t[g.e-1]-t[g.s])/60,g.e-g.s,r4(stats(yh).mean),r4(stats(yc).mean),r6(CORE.slopePerHour(vh.t,yh,0,yh.length)),r6(CORE.slopePerHour(vc.t,yc,0,yc.length))])}
+    st.getRow(1).font=HF;[6,7].forEach(c=>st.getColumn(c).numFmt=TF);st.getColumn(8).numFmt='0.0';st.getColumn(9).numFmt='#,##0';[10,11].forEach(c=>st.getColumn(c).numFmt='0.00');[12,13].forEach(c=>st.getColumn(c).numFmt='0.000');
+    const FIXON=useFix()&&Object.keys(REPAIR).length>0;
+    st.addRow([]);st.addRow(['來源',FILE]);st.addRow(['說明',`統計以 ${avgName()} 的${FIXON?'修補後':'原始'}數據計算，數值 ≤ ${DROP()} 視為跳點${FIXON?'，未修補的點不納入':'不納入'}。漂移為段內線性迴歸斜率。`]);
+    const sm=wb.addWorksheet('選取摘要',{views:[{state:'frozen',ySplit:1}]});
+    sm.columns=[{header:'分段',width:7},{header:'分類',width:10},{header:'名稱',width:16},{header:'實際操作',width:22},{header:'訊號',width:12},{header:'開始',width:20},{header:'結束',width:20},{header:'時長 (min)',width:10},
+      {header:'有效點數',width:10},{header:'平均',width:10},{header:'最小',width:10},{header:'最大',width:10},{header:'標準差',width:10},{header:'原始跳點數',width:10},{header:'修補點數',width:10},{header:'未修補點數',width:10}];
+    for(const it of items){const g=it.g,y=view(it.col,g.s,g.e).y,s2=stats(y),fx=FIXON?fixCount(it.col,g.s,g.e):{fixed:0,left:0};sm.addRow([segName(g),g.type,g.label,g.op,it.col,xl(t[g.s]),xl(t[g.e-1]),(t[g.e-1]-t[g.s])/60,s2.n,r4(s2.mean),r4(s2.min),r4(s2.max),r6(s2.sd),dropCount(it.col,g.s,g.e),fx.fixed,fx.left])}
+    sm.getRow(1).font=HF;[6,7].forEach(c=>sm.getColumn(c).numFmt=TF);sm.getColumn(8).numFmt='0.0';sm.getColumn(9).numFmt='#,##0';[10,11,12].forEach(c=>sm.getColumn(c).numFmt='0.00');sm.getColumn(13).numFmt='0.000';
+    if(incImg){const ws=wb.addWorksheet('圖');ws.getColumn(1).width=12;let r=1;
+      for(let i=0;i<items.length;i++){const it=items[i];say(`繪製圖片 ${i+1}/${items.length}…`);await tick();
+        const id=wb.addImage({base64:plotPNG(it.g,it.col),extension:'png'});ws.getCell(r,1).value=`${segName(it.g)} ${it.g.label} · ${it.col}`;ws.getCell(r,1).font=HF;
+        ws.addImage(id,{tl:{col:0,row:r},ext:{width:900,height:320}});r+=18}}
+    const bySeg=new Map();for(const it of items){if(!bySeg.has(it.g))bySeg.set(it.g,[]);bySeg.get(it.g).push(it.col)}
+    for(const [g,cs] of bySeg){say(`寫入 ${segName(g)} 數據…`);await tick();const ws=wb.addWorksheet(segName(g),{views:[{state:'frozen',ySplit:1}]}),d=DROP();
+      const fixOf=c=>FIXON&&REPAIR[c]&&fixCount(c,g.s,g.e).fixed+fixCount(c,g.s,g.e).left>0?REPAIR[c]:null;
+      const hasDrop=Object.fromEntries(cs.map(c=>[c,dropCount(c,g.s,g.e)>0])),FX=Object.fromEntries(cs.map(c=>[c,fixOf(c)]));const cols=[{header:step===1?'Times':'Times (區間起點)',width:20},{header:'段內經過時間 (s)',width:14}],rows=[];
+      if(res==='1s'){for(const c of cs){if(FX[c])cols.push({header:c+' (原始)',width:12},{header:c+' (修補後)',width:13},{header:c+' 修補代碼',width:11});else{cols.push({header:c,width:12});if(hasDrop[c])cols.push({header:c+' (去跳點)',width:13},{header:c+'_flag (1=跳點)',width:14})}}
+        for(let i=g.s;i<g.e;i++){const row=[xl(t[i]),t[i]-t[g.s]];for(const c of cs){const v=DATA.cols[c][i],ok=Number.isFinite(v);row.push(ok?Math.round(v*1e4)/1e4:null);
+          if(FX[c]){const f=FX[c].y[i];row.push(Number.isFinite(f)?Math.round(f*1e4)/1e4:null,FX[c].code[i])}else if(hasDrop[c])row.push(ok&&v>d?Math.round(v*1e4)/1e4:null,ok&&v<=d?1:0)}rows.push(row)}}
+      else{for(const c of cs){cols.push({header:c+(FX[c]?` (修補後 ${step} s 平均)`:` (${step} s 平均)`),width:18});if(FX[c])cols.push({header:c+' 修補點數',width:10});else if(hasDrop[c])cols.push({header:c+' 跳點數',width:10})}
+        const Y=Object.fromEntries(cs.map(c=>[c,series(c,g.s,g.e)]));const B=new Map();for(let i=g.s;i<g.e;i++){const b=Math.floor((t[i]-t[g.s])/step);let o=B.get(b);if(!o){o={s:{},c:{},d:{}};B.set(b,o)}
+          for(const c of cs){const v=Y[c][i-g.s],rv=DATA.cols[c][i];if(FX[c]){if(FX[c].code[i]&&Number.isFinite(FX[c].y[i]))o.d[c]=(o.d[c]||0)+1}else if(Number.isFinite(rv)&&rv<=d)o.d[c]=(o.d[c]||0)+1;
+            if(!Number.isFinite(v))continue;o.s[c]=(o.s[c]||0)+v;o.c[c]=(o.c[c]||0)+1}}
+        for(const [b,o] of B){const row=[xl(t[g.s]+b*step),b*step];for(const c of cs){row.push(o.c[c]?Math.round(o.s[c]/o.c[c]*1e4)/1e4:null);if(FX[c]||hasDrop[c])row.push(o.d[c]||0)}rows.push(row)}}
+      ws.columns=cols;ws.addRows(rows);ws.getRow(1).font=HF;ws.getColumn(1).numFmt=TF}
+    if(FIXON){say('整理修補紀錄…');await tick();const lg=wb.addWorksheet('修補紀錄',{views:[{state:'frozen',ySplit:1}]});
+      lg.columns=[{header:'訊號',width:11},{header:'分段',width:7},{header:'開始',width:20},{header:'結束',width:20},{header:'點數',width:8},{header:'原因',width:18},{header:'方法',width:12},{header:'結果',width:8},{header:'左端點值',width:10},{header:'右端點值',width:10},{header:'備註',width:34}];
+      for(const c of Object.keys(REPAIR))for(const r of REPAIR[c].runs)lg.addRow([c,segName(SEGS[segAtRow(r.a)]),xl(t[r.a]),xl(t[r.b]),r.b-r.a+1,r.codes.map(k=>CORE.CODE_NAME[k]).join('、'),
+        METHOD_NAME[r.method]+(r.method==='poly'?` (${r.deg} 階)`:''),r.filled?'已修補':'未修補',r4(r.yL),r4(r.yR),r.note||'']);
+      lg.getRow(1).font=HF;[3,4].forEach(c=>lg.getColumn(c).numFmt=TF);[9,10].forEach(c=>lg.getColumn(c).numFmt='0.00');
+      lg.addRow([]);lg.addRow(['修補代碼','0 原始值、1 錯誤碼、2 缺值或時間斷點、3 即跳點、4 手動標記、5 錯誤碼鄰近的過渡值']);
+      lg.addRow(['說明','「修補後」欄空白代表該點未修補（斷點超過最長修補長度，或在資料邊緣沒有前後端點）。擬合曲線超出前後數據範圍時該段改用線性，記在備註。'])}
+    say('產生 Excel 檔…');await tick();
+    const buf=await wb.xlsx.writeBuffer(),blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const name=`${FILE.replace(/\.[^.]+$/,'')}_選取${items.length}張圖_${step===1?'1Hz':step+'s平均'}.xlsx`;
+    setReady({blob,name,sig:readySig()});
+    const d=DL||await dlP;if(!d)setReady(null);say(d?`Excel 已產生（${(blob.size/1e6).toFixed(1)} MB）。按「下載 Excel」存到電腦。`:noDlMsg(),!d)
+  }catch(err){say('匯出失敗：'+(err&&err.message||err),true)}finally{btn.disabled=false}}
+$('exportBtn').addEventListener('click',doExport);
+
+/* ---------- boot ---------- */
+updateRepairUI();
+let rt;window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(!DATA)return;renderOverview();renderDetail();drawVisible(true)},150)});
+const rerender=()=>{if(DATA){renderOverview();renderDetail();drawVisible(true)}};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',rerender);
+new MutationObserver(rerender).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+(async()=>{let f=null;try{const r=await Promise.all([SEGSTORE.get('file'),SEGSTORE.get('segs')]);f=r[0]||null;PENDING=r[1]||null}catch(e){}
+  if(f&&f.blob){$('fileinfo').textContent=`載入上次的檔案 ${f.name}…`;const nf=new File([f.blob],f.name||'data.csv');nf.__restored=true;await loadFile(nf,false);if(DATA)return}
+  $('fileinfo').textContent='載入範例 6hr_Red.csv…';loadSample()})();
+
+</script>
+
+</body></html>
