@@ -1528,6 +1528,14 @@ def index():
     return resp
 
 
+@app.after_request
+def _cache_vendor(resp):
+    # static/vendor 是固定版本的第三方函式庫（內容不會變，換版會換檔案與 VERSIONS.txt），讓瀏覽器與邊緣快取一個月。
+    if request.path.startswith('/static/vendor/'):
+        resp.headers['Cache-Control'] = 'public, max-age=2592000, immutable'
+    return resp
+
+
 @app.route('/fid')
 def fid():
     # 原本的 FID 分類頁；外殼的第一個分頁就是它，單獨開 /fid 也能用。

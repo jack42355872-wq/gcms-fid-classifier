@@ -6,7 +6,9 @@
 <title>GC-MS 數據分析工作區 — FID 分類 · CO₂ 加氫</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<!-- fonts are cosmetic: load without blocking first paint, system fonts fill in if Google is slow or unreachable -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap"></noscript>
 <script src="/static/suite/bridge.js"></script>
 <style>
 /* Layout: instrument strip. One menu bar (system name, tool tabs, keep-alive legend) over a stage; the chosen tool fills the stage and every opened tool stays loaded behind it. */
@@ -139,6 +141,7 @@ button, input { font: inherit; color: inherit; }
             <label class="btn" for="restoreFile">匯入備份…</label>
             <input type="file" id="restoreFile" accept=".json,application/json" hidden>
             <span class="usage" id="usage"></span>
+            <span class="usage" id="lastBk"></span>
           </div>
           <div id="restoreBox" hidden></div>
           <div class="msg" id="bkMsg" role="status" aria-live="polite"></div>
@@ -150,7 +153,7 @@ button, input { font: inherit; color: inherit; }
             <li><b>來源。</b>反應器記錄分段、GC-TCD、液相 ASF、層析圖排版、L16 最佳化這五個工具原本是學長做的獨立網頁（只能在 claude.ai 裡開），現在和 FID 分類放進同一個站。工具本身的程式沒有重寫，只改了這幾處：下載改成一般瀏覽器下載、數據存放改接這裡的共用儲存、液相 ASF 的類別判定順序（見下一條）、ASF 載入只有「Sheet1」一個工作表的檔案時改用檔名當樣品名、反應器記錄找不到範例檔時的提示。</li>
             <li><b>FID 分類與液相 ASF 的分工。</b>FID 分類是依化學結構規則把每個峰歸入 7 大類（含 n-alkane 的滯留時間校驗），輸出各類百分比與 Excel 報告；液相 ASF 是依名稱與滯留時間指派碳數，求 Total / Alkane / Alkene 的碳數分布與 α。液相 ASF 原本先判環、再判不飽和，環烯（cyclopentene、cyclohexene 等）會被算成 cyclic；已改成「含氧／雜原子 → 芳香環 → 不飽和 → 環 → 烷」，和 FID 分類同一套順序，cyclic 只收全飽和的環。但 FID 分類另外用滯留時間校驗 n-alkane（名稱是直鏈烷、RT 卻對不上標尺的歸 iso-alkane），ASF 沒有這一步，所以同一份峰表的 n-alkane／iso-alkane 比例兩邊仍會有差；溶劑峰的扣除規則也不同。要出 i/n 比，以 FID 分類為準。</li>
             <li><b>範例資料。</b>液相 ASF（13 個樣品）、層析圖排版（6 條 TIC）、L16（範例數據）首次開啟時會帶學長原檔附的示範數據，載入自己的檔案後會取代。反應器記錄沒有附範例檔，請直接拖入記錄器 CSV。</li>
-            <li><b>隱私。</b>五個工具全部在你的瀏覽器裡計算，檔案不會上傳到伺服器。FID 分類會把檔案送到伺服器處理，處理完即丟棄、不存檔；僅對辨識不出的化合物名稱向 PubChem 查詢（只送名稱，不送濃度或檔案）。</li>
+            <li><b>隱私與費用。</b>整個站沒有任何 AI／Claude 的呼叫（伺服器沒有 API 金鑰，頁面也不連任何模型服務），使用不會消耗 token。五個工具全部在你的瀏覽器裡計算，檔案不會上傳到伺服器；它們需要的三個函式庫（Excel 讀寫、繪圖）也是由本站直接提供，不依賴外部 CDN。FID 分類會把檔案送到伺服器處理，處理完即丟棄、不存檔；僅對辨識不出的化合物名稱向 PubChem 查詢（只送名稱，不送濃度或檔案）。</li>
           </ul>
         </section>
       </div>
@@ -390,7 +393,14 @@ button, input { font: inherit; color: inherit; }
     else out.l16 = '範例 L16 數據';
     return out;
   }
+  function showLastBackup() {
+    const t = Number(Store.api.getItem('suite:lastBackup')) || 0, el = $('lastBk');
+    if (!t) { el.textContent = '· 尚未匯出過備份（瀏覽器可能因清除網站資料或長期不開而丟掉數據，建議先匯出一份）'; return; }
+    const days = Math.floor((Date.now() - t) / 86400000);
+    el.textContent = `· 上次匯出備份：${days <= 0 ? '今天' : days + ' 天前'}${days >= 7 ? '，建議重新匯出' : ''}`;
+  }
   async function renderHome() {
+    showLastBackup();
     const S = await summaries();
     $('modRows').innerHTML = TOOLS.map((t) => {
       const live = mounted.has(t.id);
@@ -430,7 +440,9 @@ button, input { font: inherit; color: inherit; }
       const downloads = await dlP;
       if (!downloads) { bkMsg('這個瀏覽器無法觸發下載，請改用桌面版 Chrome、Edge 或 Safari 再匯出。', true); return; }
       await downloads.save({ filename, data: blob });
+      Store.api.setItem('suite:lastBackup', String(Date.now()));
       bkMsg(`已匯出 ${filename}（${fmtMB(blob.size)}）`);
+      showLastBackup();
     } catch (err) {
       const c = err && err.code;
       bkMsg(c === 'declined' ? '你取消了下載。' : '匯出失敗：' + ((err && err.message) || c || err), c !== 'declined');

@@ -1,0 +1,14 @@
+Third-party libraries served from this site instead of a CDN (pinned; byte-identical to the
+official copies, verified 2026-10-18 against cdnjs / jsDelivr published hashes).
+
+xlsx.full.min.js   SheetJS CE 0.18.5   Apache-2.0
+  from https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js
+  sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA==
+exceljs.min.js     ExcelJS 4.4.0       MIT
+  from https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js
+  sha512-dlPw+ytv/6JyepmelABrgeYgHI0O+frEwgfnPdXDTOIZz+eDgfW07QXG02/O8COfivBdGNINy+Vex+lYmJ5rxw==
+plotly.min.js      plotly.js-dist-min 2.27.0   MIT
+  from https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.27.0/plotly.min.js
+  sha256-f0kw66j4VB2+wo3KW9X3h/ju8c3gNprJZXtwvtIws+A=
+
+Upgrading = replace the file, update this note, and re-run `python tools/build_suite.py <suite html>`.

@@ -81,3 +81,14 @@ gcms-web/
 ## 如果遇到問題
 
 直接告訴 Claude（這個對話框），說「遇到 XXX 錯誤」，我來處理。
+
+---
+
+## 工作區（2026-10-18 起）與學長五個工具的維護
+
+- `/` 是分頁工作區（`static/suite/shell.html`），`/fid` 是 FID 分類頁；學長的五個工具是 `static/suite/*.html`，不是手寫的，是從他的單檔 `index.html` 用 `tools/build_suite.py` 產生的。
+- **使用成本為零 token**：站上沒有任何 AI／Claude 呼叫，伺服器沒有 API 金鑰。`tools/audit_suite.py` 把關這件事，每次重建會自動跑，也可單獨跑 `python tools/audit_suite.py`；它會擋 AI API 字樣、`claude.<其他能力>`、不在白名單的外部網域、多餘的網路呼叫。
+- 學長出新版時：`python tools/build_suite.py "<新的 index.html 路徑>"`。我們對他的程式只有四個小 patch（寫在 build_suite.py 的 PATCHES），對不上會直接報錯，代表他改到那段了，要人看。
+- 三個函式庫（SheetJS、ExcelJS、Plotly）放在 `static/vendor/`，版本與雜湊記在 `VERSIONS.txt`，不再連外部 CDN。升級要換檔案並更新 VERSIONS.txt。
+- 五個工具的數據存在使用者自己的瀏覽器（IndexedDB），不在伺服器；總覽頁有備份／還原，並顯示上次備份距今幾天。
+- 還原整件事：`git revert 8fc788b` 之後的提交即可回到只有 FID 分類的版本（`/` 會變回分類頁）。

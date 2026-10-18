@@ -37,6 +37,15 @@ PATCHES = {
 }
 
 
+# Libraries the modules pull from a CDN. They are served from static/vendor instead (byte-identical,
+# hashes in static/vendor/VERSIONS.txt) so the tools do not depend on a third party being reachable.
+VENDOR = {
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js': '/static/vendor/xlsx.full.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js': '/static/vendor/exceljs.min.js',
+    'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.27.0/plotly.min.js': '/static/vendor/plotly.min.js',
+}
+
+
 def main(src):
     html = open(src, encoding='utf-8').read()
     m = re.search(r'<script type="application/json" id="tool-src">(.*?)</script>', html, re.S)
@@ -49,6 +58,8 @@ def main(src):
             if part['body'].count(old) != 1:
                 sys.exit(f'{tid}: patch target not found exactly once')
             part['body'] = part['body'].replace(old, new)
+        for cdn, local in VENDOR.items():
+            part['body'] = part['body'].replace(cdn, local)
         doc = ('<!doctype html>\n<html lang="zh-Hant"><head>'
                '<meta charset="utf-8"><script src="bridge.js"></script>' + part['head'] +
                '</head><body>' + part['body'] + '</body></html>\n')
@@ -56,6 +67,11 @@ def main(src):
         with open(path, 'w', encoding='utf-8', newline='\n') as fh:
             fh.write(doc)
         print(f'{tid}: {len(doc):,} chars -> {os.path.normpath(path)}')
+    # A rebuilt page must still be a zero-AI-token, no-new-third-party page; refuse otherwise.
+    sys.path.insert(0, HERE)
+    import audit_suite
+    if audit_suite.main() != 0:
+        sys.exit('audit failed: see messages above')
 
 
 if __name__ == '__main__':
