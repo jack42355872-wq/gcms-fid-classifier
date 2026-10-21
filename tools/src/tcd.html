@@ -1,0 +1,1403 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>GC-TCD 轉化率計算</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: inputs on the left (conditions & flows, pasted peak table, calibration method), results on the right (KPIs, product table, checks, worked formulas), saved runs full width below */
+:root {
+  --bg: #f2f4f3; --surface: #fcfdfc; --sunk: #e9edeb; --ink: #121615; --ink-2: #444d4a; --muted: #747d7a;
+  --line: #d7ddda; --grid: #e4e8e6; --axis: #b9c1bd;
+  --warn-bg: #fff4d6; --warn-ink: #6b4a00; --warn-line: #f0c862;
+  --bad-bg: #fde8e6; --bad-ink: #8f1f1f; --bad-line: #eeb1ab;
+  --ok-bg: #e5f4e9; --ok-ink: #145c2b; --ok-line: #a9d8b6;
+  --c-co2: #2a78d6; --c-co: #eb6834; --c-hc: #1baf7a; --c-h2: #4a3aa7;
+  --font-ui: "IBM Plex Sans", "Noto Sans TC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", "Noto Sans TC", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1110; --surface: #161a19; --sunk: #1f2422; --ink: #edf1ef; --ink-2: #b7c0bc; --muted: #86908c;
+    --line: #2c3331; --grid: #242a28; --axis: #3d4643;
+    --warn-bg: #33290f; --warn-ink: #f3d68a; --warn-line: #7a5f1c;
+    --bad-bg: #3a1714; --bad-ink: #f3aaa2; --bad-line: #7a2e27;
+    --ok-bg: #12301c; --ok-ink: #9fdcb1; --ok-line: #2c6a40;
+    --c-co2: #3987e5; --c-co: #d95926; --c-hc: #199e70; --c-h2: #9085e9;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1110; --surface: #161a19; --sunk: #1f2422; --ink: #edf1ef; --ink-2: #b7c0bc; --muted: #86908c;
+  --line: #2c3331; --grid: #242a28; --axis: #3d4643;
+  --warn-bg: #33290f; --warn-ink: #f3d68a; --warn-line: #7a5f1c;
+  --bad-bg: #3a1714; --bad-ink: #f3aaa2; --bad-line: #7a2e27;
+  --ok-bg: #12301c; --ok-ink: #9fdcb1; --ok-line: #2c6a40;
+  --c-co2: #3987e5; --c-co: #d95926; --c-hc: #199e70; --c-h2: #9085e9;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1360px; margin: 0 auto; padding-inline: 20px; padding-block: 18px 48px; display: flex; flex-direction: column; gap: 18px; }
+@media (max-width: 600px) { .wrap { padding-inline: 16px; } }
+h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
+h1 { font-size: 20px; } h2 { font-size: 15px; } h3 { font-size: 13px; }
+.mono, .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); } .small { font-size: 12px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--c-co2); outline-offset: 2px; }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.top .sub { color: var(--ink-2); font-size: 13px; margin-top: 2px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 6px 12px; font-size: 13px; }
+.btn:hover { border-color: var(--axis); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn[disabled] { opacity: 0.45; cursor: default; }
+.btn.ghost { background: transparent; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; font-size: 12.5px; }
+.linkbtn:hover { color: var(--ink); }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 18px; align-items: start; }
+@media (max-width: 1080px) { .cols { grid-template-columns: 1fr; } }
+.stack { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+.card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 12px; }
+.card-head p { margin: 0; color: var(--muted); font-size: 12.5px; }
+.form { display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 10px 14px; }
+.fld { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-2); min-width: 0; }
+.fld .row { display: flex; align-items: center; gap: 6px; }
+.fld .u { color: var(--muted); font-size: 12px; white-space: nowrap; }
+input[type="number"], input[type="text"], select, textarea { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; font-size: 13px; min-width: 0; }
+input[type="number"] { font-family: var(--font-data); width: 100%; }
+.fld input[type="number"] { width: 100%; }
+textarea { width: 100%; min-height: 150px; font-family: var(--font-data); font-size: 12px; line-height: 1.45; resize: vertical; white-space: pre; overflow: auto; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 5px 10px; font-size: 12.5px; border-left: 1px solid var(--line); }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg { flex-wrap: wrap; max-width: 100%; }
+.seg button { white-space: nowrap; }
+.line { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); }
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--grid); white-space: nowrap; vertical-align: middle; }
+th { background: var(--sunk); color: var(--ink-2); font-weight: 500; font-size: 12px; position: sticky; top: 0; }
+td.r, th.r { text-align: right; }
+tr.sum td { font-weight: 600; border-top: 1px solid var(--axis); }
+tr.dim td { color: var(--muted); }
+tr.click { cursor: pointer; } tr.click:hover td { background: var(--sunk); }
+tr.cur td { background: var(--sunk); }
+td select { font-size: 12px; padding: 2px 4px; }
+td input[type="number"], td input[type="text"] { padding: 2px 5px; font-size: 12px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+@media (max-width: 560px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi { border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; background: var(--surface); }
+.kpi .k { font-size: 12px; color: var(--muted); }
+.kpi .v { font-size: 26px; font-weight: 500; letter-spacing: -0.01em; }
+.kpi .v small { font-size: 13px; color: var(--muted); margin-left: 2px; font-weight: 400; }
+.kpi.flag { border-color: var(--bad-line); background: var(--bad-bg); }
+.kpi.flag .k, .kpi.flag .v { color: var(--bad-ink); }
+.checks { display: flex; flex-direction: column; gap: 8px; }
+.chk { border-radius: 6px; padding: 8px 11px; font-size: 13px; border: 1px solid var(--line); }
+.chk b { font-weight: 600; }
+.chk .d { font-size: 12.5px; margin-top: 2px; }
+.chk.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok-ink); }
+.chk.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.chk.bad { background: var(--bad-bg); border-color: var(--bad-line); color: var(--bad-ink); }
+.chk.info { background: var(--sunk); color: var(--ink-2); }
+.fx { display: flex; flex-direction: column; gap: 9px; font-size: 13px; color: var(--ink-2); }
+.fx .eq { font-family: var(--font-data); font-size: 12.5px; color: var(--ink); white-space: normal; word-break: break-word; }
+.fx .lab { font-size: 12px; color: var(--muted); }
+#toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 70; background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: 13px; display: flex; gap: 14px; align-items: center; max-width: calc(100vw - 32px); }
+.toast-act { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 5px; padding: 2px 10px; font-size: 12.5px; }
+.pill { display: inline-block; font-size: 11px; border-radius: 4px; padding: 0 5px; border: 1px solid var(--line); color: var(--ink-2); }
+.pill.w { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.pill.b { background: var(--bad-bg); border-color: var(--bad-line); color: var(--bad-ink); }
+/* figures */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.tab { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 12px; font-size: 12.5px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tabact { display: inline-flex; gap: 14px; margin-left: 8px; align-items: center; flex-wrap: wrap; }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 12px; }
+.filters:empty { display: none; }
+.field { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); flex-wrap: wrap; min-width: 0; }
+.filters input[type="number"] { width: 84px; }
+.filters input[type="text"] { width: 190px; max-width: 100%; }
+.filters .gt input[type="text"] { width: 300px; }
+.filters input[type="range"] { width: 140px; accent-color: var(--ink-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 10px 3px 8px; font-size: 12.5px; }
+.chip .sw { margin-right: 0; }
+.chip[aria-pressed="false"] { color: var(--muted); background: transparent; border-style: dashed; }
+.chip[aria-pressed="false"] .sw { opacity: 0.3; }
+.mgroups { display: flex; flex-direction: column; gap: 8px; flex-basis: 100%; min-width: 0; }
+.mgroup { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; align-items: start; }
+.mgroup > .k { font-size: 12px; color: var(--muted); padding-top: 4px; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px; margin-top: 12px; align-items: center; }
+.cgrid .k { grid-column: 1 / -1; font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+.cpick { display: flex; align-items: center; gap: 8px; font-size: 12.5px; min-width: 0; }
+.cpick input[type="color"] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; flex: none; }
+.gprev { margin-top: 14px; background: #ffffff; border: 1px solid var(--line); border-radius: 6px; padding: 6px; overflow: auto; max-height: 760px; }
+.gprev svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.gprev .empty { color: #6b736f; font-size: 12.5px; padding: 24px; }
+.gfoot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+.gfoot .btn { padding: 4px 12px; }
+.dl { display: inline-flex; gap: 6px; align-items: baseline; color: var(--muted); font-size: 12.5px; flex-wrap: wrap; }
+.gcells { display: grid; gap: 8px; min-width: 0; }
+.gcell { border: 1px solid var(--line); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: var(--sunk); min-width: 0; }
+.gcell select { width: 100%; min-width: 0; font-size: 12.5px; }
+.gpos { font-size: 11.5px; color: var(--muted); font-family: var(--font-data); }
+td.nowrap { white-space: nowrap; }
+.hint { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; flex-basis: 100%; }
+@media (prefers-reduced-motion: no-preference) { .btn, .chip, .tab { transition: border-color .12s, background-color .12s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>GC-TCD 轉化率計算</h1>
+      <div class="sub">貼上 GC-TCD 峰表、輸入入口與出口流量 → CO₂ / H₂ 轉化率、CO 與烴類的選擇性、產率</div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="btnUndo" type="button" disabled>↶ 上一步</button>
+      <button class="btn ghost" id="btnRedo" type="button" disabled>↷ 下一步</button>
+      <button class="btn" id="btnCopy" type="button">複製結果</button>
+      <button class="btn primary" id="btnExport" type="button" hidden>匯出 Excel</button>
+    </div>
+  </header>
+
+  <div class="cols">
+    <div class="stack">
+      <section class="card">
+        <div class="card-head"><h2>反應條件與流量</h2><p>流量單位 mL/min；T、P、GHSV、TOS 只記錄（作圖可以拿來當 X 軸），不參與計算</p></div>
+        <div class="form" id="condForm"></div>
+        <div class="line" id="flowModes"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>貼上 GC-TCD 數據</h2><p>從 GCsolution 或 Excel 直接複製峰表貼進來，有沒有表頭都可以</p></div>
+        <textarea id="paste" spellcheck="false" aria-label="GC-TCD 峰表"></textarea>
+        <div class="line"><span id="pasteNote" class="muted small"></span><button type="button" class="linkbtn" id="btnSample">貼回範例（test.xlsx）</button><button type="button" class="linkbtn" id="btnClearPaste">清空</button></div>
+        <h3 style="margin:14px 0 6px">峰的指定與濃度</h3>
+        <div class="tbl-wrap"><table id="peaks"></table></div>
+        <p class="muted small" style="margin:6px 0 0">每根峰依 RT 自動對到「校正方法」裡最近的成分（在 RT 容許範圍內）；下拉選單可以手動改。濃度 = 面積 × 校正係數。</p>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>校正方法</h2><p>每一列是一根峰；同名的列會加總（例如 CH₄ 的兩根峰各用自己的係數）</p></div>
+        <div class="tbl-wrap"><table id="method"></table></div>
+        <div class="line"><button type="button" class="linkbtn" id="btnAddRow">＋ 新增一列</button><button type="button" class="linkbtn" id="btnResetMethod">還原為 test.xlsx 的方法</button></div>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section class="card">
+        <div class="card-head"><h2>結果</h2><p id="resNote"></p></div>
+        <div class="kpis" id="kpis"></div>
+        <div class="tbl-wrap"><table id="results"></table></div>
+        <h3 style="margin:14px 0 6px">Summary（跟你 Excel 第 46–48 列同樣的排法）</h3>
+        <div class="tbl-wrap"><table id="summary"></table></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>檢查</h2><p>不改變結果，只提醒哪裡可能有問題</p></div>
+        <div class="checks" id="checks"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>計算式</h2><p>代入目前的數字，方便對照 Excel</p></div>
+        <div class="fx" id="fx"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>已存的數據</h2><p>每算完一組就存起來，最後一起匯出或複製到 Excel；點一列可以載回來修改</p></div>
+    <div class="line" style="margin:0 0 10px"><label class="fld" style="flex-direction:row;align-items:center;gap:8px" for="runName">名稱 <input type="text" id="runName" placeholder="例如 300 °C · 20 bar · TOS 12 h" style="width:260px"></label><button type="button" class="btn primary" id="btnSave">存成一筆</button><button type="button" class="linkbtn" id="btnCopyRuns">複製這張表</button></div>
+    <div class="tbl-wrap"><table id="runs"></table></div>
+  </section>
+
+  <section class="card" id="figCard">
+    <div class="card-head"><h2>作圖</h2><p>用「已存的數據」畫圖，預覽就是下載出來的樣子（白底）。最多 9 張，每張各自設定</p></div>
+    <div class="tabs" id="figTabs" role="tablist" aria-label="圖"></div>
+    <div class="filters" id="figCtl1"></div>
+    <div class="filters" id="figCtl2"></div>
+    <div class="filters" id="figCtl3"></div>
+    <div class="filters" id="figCtl4"></div>
+    <div class="tbl-wrap" id="figItemsWrap" style="max-height:300px;overflow-y:auto"><table id="figItems"></table></div>
+    <p class="muted small" id="figNote" style="margin:8px 0 0"></p>
+    <div class="cgrid" id="figColors"></div>
+    <div class="gprev" id="figPrev"></div>
+    <div class="gfoot"><span class="muted small" id="figSize"></span><span id="figDl"></span></div>
+  </section>
+
+  <section class="card" id="gridCard">
+    <div class="card-head"><h2>組圖排版 m × n</h2><p>把上面的圖排成一張下載；每一格選一張圖，標題、顏色沿用各圖的設定</p></div>
+    <div class="filters" id="gridCtl"></div>
+    <div class="chips" id="gridPresets" style="margin-bottom:12px"></div>
+    <div class="gcells" id="gridCells"></div>
+    <div class="gprev" id="gridPrev"></div>
+    <div class="gfoot"><span class="muted small" id="gridSize"></span><span id="gridDl"></span></div>
+  </section>
+</div>
+<div id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>/* GC-TCD conversion / selectivity / yield core. Browser: window.TCDCore; Node: module.exports */
+(function (root) {
+  'use strict';
+  const num = (v) => { if (v == null) return NaN; const s = String(v).trim().replace(/,/g, ''); return s === '' ? NaN : Number(s); };
+
+  /** Parse a pasted GC peak table (GCsolution / Excel copy, tab separated, header optional). */
+  function parsePaste(text) {
+    const lines = String(text || '').split(/\r?\n/).filter((l) => l.trim() !== '');
+    if (!lines.length) return { peaks: [], note: '' };
+    const split = (l) => (l.includes('\t') ? l.split('\t') : l.trim().split(/\s{2,}|,|\s+/));
+    let rows = lines.map(split);
+    let ci = null, start = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i].map((c) => String(c).trim().toLowerCase());
+      const rt = r.findIndex((c) => /^(ret\.?\s*time|r\.?\s*time|rt|retention\s*time)$/.test(c));
+      const ar = r.findIndex((c) => /^area$/.test(c));
+      if (rt >= 0 && ar >= 0) {
+        ci = { rt, area: ar, pk: r.findIndex((c) => /^peak\s*#?$|^peak\s*no\.?$/.test(c)), height: r.findIndex((c) => /^height$/.test(c)), conc: r.findIndex((c) => /^conc\.?$/.test(c)), name: r.findIndex((c) => /^(compound\s*name|name)$/.test(c)) };
+        start = i + 1; break;
+      }
+    }
+    const peaks = [];
+    for (let i = start; i < rows.length; i++) {
+      const r = rows[i];
+      let rt, area, pk, height, name;
+      if (ci) { rt = num(r[ci.rt]); area = num(r[ci.area]); pk = ci.pk >= 0 ? r[ci.pk] : peaks.length + 1; height = ci.height >= 0 ? num(r[ci.height]) : NaN; name = ci.name >= 0 ? r[ci.name] : ''; }
+      else {
+        // no header: GCsolution order is Peak#, Ret.Time, Area, Height, ... ; fall back to "RT, Area"
+        const n = r.map(num);
+        if (Number.isInteger(n[0]) && isFinite(n[1]) && isFinite(n[2]) && n[1] < 1000) { pk = n[0]; rt = n[1]; area = n[2]; height = n[3]; }
+        else if (isFinite(n[0]) && isFinite(n[1])) { pk = peaks.length + 1; rt = n[0]; area = n[1]; }
+        else continue;
+      }
+      if (!isFinite(rt) || !isFinite(area)) continue;
+      peaks.push({ pk: String(pk ?? peaks.length + 1).trim(), rt, area, height: isFinite(height) ? height : null, name: name ? String(name).trim() : '' });
+    }
+    return { peaks, note: ci ? '' : '沒有表頭，依 Peak#、Ret.Time、Area 的順序讀取' };
+  }
+
+  /** Match peaks to method rows: each method row takes its nearest peak inside its RT window (one-to-one). */
+  function assign(peaks, method, overrides) {
+    overrides = overrides || {};
+    const out = peaks.map(() => null);
+    const pairs = [];
+    method.forEach((m, j) => peaks.forEach((p, i) => { const d = Math.abs(p.rt - m.rt); if (d <= (m.win > 0 ? m.win : 0.15)) pairs.push({ i, j, d }); }));
+    pairs.sort((a, b) => a.d - b.d);
+    const usedP = new Set(), usedM = new Set();
+    for (const q of pairs) { if (usedP.has(q.i) || usedM.has(q.j)) continue; usedP.add(q.i); usedM.add(q.j); out[q.i] = method[q.j].id; }
+    peaks.forEach((p, i) => { const k = p.pk + '@' + p.rt; if (k in overrides) out[i] = overrides[k] || null; });
+    return out;
+  }
+
+  /**
+   * S: { flows: {h2, co2, out, is, outMode}, method: [{id,name,rt,win,f,role,n}], h2Mode, liqC816, restLabel }
+   * roles: co2 | h2 | co | hc (n = carbon number) | inert (air, O2, N2: removed before normalising) | is (internal standard) | ignore
+   */
+  function calc(S, peaks, assignment) {
+    const byId = new Map(S.method.map((m) => [m.id, m]));
+    const comp = new Map(); // name -> {name, role, n, raw, peaks:[]}
+    const peakRows = peaks.map((p, i) => {
+      const m = assignment[i] ? byId.get(assignment[i]) : null;
+      const raw = m && m.role !== 'ignore' ? p.area * m.f : null;
+      if (m && m.role !== 'ignore') {
+        const key = m.name.trim();
+        if (!comp.has(key)) comp.set(key, { name: key, role: m.role, n: m.role === 'hc' ? (+m.n || 1) : m.role === 'co' || m.role === 'co2' ? 1 : 0, raw: 0, peaks: [] });
+        const c = comp.get(key); c.raw += raw; c.peaks.push(i);
+      }
+      return { ...p, method: m, raw };
+    });
+    let h2 = [...comp.values()].find((c) => c.role === 'h2');
+    const sumOthers = [...comp.values()].filter((c) => c.role !== 'h2').reduce((t, c) => t + c.raw, 0);
+    if (S.h2Mode !== 'measured') {
+      if (h2) comp.delete(h2.name);
+      h2 = { name: 'H2', role: 'h2', n: 0, raw: 100 - sumOthers, peaks: [], byDiff: true };
+      comp.set('H2', h2);
+    }
+    const C = [...comp.values()];
+    const normSet = C.filter((c) => c.role !== 'inert' && c.role !== 'is');
+    const D = normSet.reduce((t, c) => t + c.raw, 0);
+    C.forEach((c) => { c.norm = c.role === 'inert' || c.role === 'is' ? null : (c.raw / D) * 100; });
+    const F = S.flows;
+    const isComp = C.find((c) => c.role === 'is');
+    let Fout = +F.out, outNote = '';
+    if (F.outMode === 'is') {
+      if (isComp && isComp.raw > 0 && +F.is > 0) { Fout = +F.is / (isComp.raw / 100); outNote = `由內標 ${isComp.name} 推算：F_out = ${(+F.is).toFixed(2)} ÷ ${(isComp.raw / 100).toFixed(4)}`; }
+      else outNote = '內標模式需要內標的入口流量和一根被指定為內標的峰';
+    }
+    // outlet flow of each species (mL/min). Direct mode: F_out × air-free fraction (the Excel method).
+    // Internal-standard mode: F_IS,in × raw_i / raw_IS, which needs no normalisation at all.
+    C.forEach((c) => {
+      if (c.role === 'inert') { c.fout = null; return; }
+      if (F.outMode === 'is' && isComp && isComp.raw > 0 && +F.is > 0) c.fout = (+F.is * c.raw) / isComp.raw;
+      else c.fout = c.norm == null ? null : (Fout * c.norm) / 100;
+    });
+    const get = (role) => C.filter((c) => c.role === role);
+    const co2 = get('co2')[0], co = get('co'), hcs = get('hc').sort((a, b) => a.n - b.n || a.name.localeCompare(b.name));
+    const Fco2in = +F.co2, Fh2in = +F.h2;
+    const r = { comps: C, peakRows, D, Fout, outNote, h2 };
+    const Fco2out = co2 ? co2.fout : NaN;
+    r.Xco2 = ((Fco2in - Fco2out) / Fco2in) * 100;
+    r.Xh2 = h2 ? ((Fh2in - h2.fout) / Fh2in) * 100 : NaN;
+    const FcoOut = co.reduce((t, c) => t + c.fout, 0);
+    r.Yco = (FcoOut / Fco2in) * 100;
+    r.Sco = (r.Yco / r.Xco2) * 100;
+    const XhcBasis = r.Xco2 - r.Yco; // = X·(1 − S_CO): carbon that went to hydrocarbons
+    r.hc = hcs.map((c) => { const Y = (c.n * c.fout / Fco2in) * 100; return { name: c.name, n: c.n, fout: c.fout, Y, S: (Y / XhcBasis) * 100, Stot: (Y / r.Xco2) * 100 }; });
+    const sumY = r.hc.reduce((t, x) => t + x.Y, 0);
+    r.Yrest = r.Xco2 - r.Yco - sumY;
+    r.Srest = (r.Yrest / XhcBasis) * 100;      // = 100 − Σ S_i (CO-free)
+    r.SrestTot = (r.Yrest / r.Xco2) * 100;
+    const nmax = r.hc.length ? Math.max(...r.hc.map((x) => x.n)) : 0;
+    r.restLabel = S.restLabel && S.restLabel.trim() ? S.restLabel.trim() : `C${nmax + 1}+`;
+    const frac = isFinite(+S.liqC816) && S.liqC816 !== '' && S.liqC816 != null ? +S.liqC816 / 100 : null;
+    r.Sc816 = frac != null ? r.Srest * frac : null;
+    r.Yc816 = frac != null ? r.Yrest * frac : null;
+    r.groups = {
+      C1: r.hc.filter((x) => x.n === 1).reduce((t, x) => t + x.S, 0),
+      C2C4: r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + x.S, 0), // C2 … C_nmax (everything measured above C1)
+      YC1: r.hc.filter((x) => x.n === 1).reduce((t, x) => t + x.Y, 0),
+      YC2C4: r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + x.Y, 0),
+    };
+    // checks
+    r.carbonGas = ((Fco2out + FcoOut + r.hc.reduce((t, x) => t + x.n * x.fout, 0)) / Fco2in) * 100;
+    r.h2Ratio = Fh2in / Fco2in;
+    r.Xh2Max = (4 * r.Xco2) / r.h2Ratio; // every converted CO2 to CH4 is the most H2-hungry case
+    const h2Need = FcoOut * 1 + r.hc.reduce((t, x) => t + (3 * x.n + 1) * x.fout, 0) + (Math.max(0, r.Yrest) / 100) * Fco2in * 3;
+    r.h2Consumed = h2 ? Fh2in - h2.fout : NaN;
+    r.h2Need = h2Need;
+    return r;
+  }
+
+  const api = { parsePaste, assign, calc };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.TCDCore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+(function () {
+  'use strict';
+  const T = window.TCDCore;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const f2 = (x, d = 2) => (x == null || !isFinite(x) ? '—' : (+x).toFixed(d));
+  const SAMPLE = "Peak#\tRet.Time\tArea\tHeight\tConc.\tUnits\tMark\tCompound ID#\tCompound Name\tFinal Time\n1\t0.524\t68058.2\t15013.6\t13.98642\tppm\t\t1\tRT0.550\t0.556\n2\t0.669\t24146.8\t5254\t4.96233\tppm\tV\t2\tRT0.684\t0.687\n3\t0.904\t321200.2\t49040.6\t66.00882\t\tV\t\t\t1.121\n4\t2.062\t3611.7\t316.7\t0.74222\t\t\t\t\t1.559\n5\t2.438\t1630.9\t123.8\t0.33516\t\t\t\t\t2.147\n6\t4.046\t6057.2\t295.7\t1.24481\t\t\t\t\t2.675\n7\t5.431\t10095.9\t457\t2.07478\tppm\t\t3\tRT5.179\t3.584\n8\t6.133\t25125.7\t797.9\t5.16349\t\tV\t\t\t4.971\n9\t10.616\t14164.3\t249.8\t2.91087\tppm\t\t5\tRT10.776\t5.624\n10\t14.789\t12511\t161\t2.5711\t\tV\t\t\t6.226";
+  const DEFAULT_METHOD = () => [
+    { id: 'm1', name: 'Air', rt: 0.524, win: 0.08, f: 0.00003, role: 'inert', n: 0 },
+    { id: 'm2', name: 'CH4', rt: 0.669, win: 0.08, f: 0.00008, role: 'hc', n: 1 },
+    { id: 'm3', name: 'CO2', rt: 0.904, win: 0.15, f: 0.00007, role: 'co2', n: 1 },
+    { id: 'm4', name: 'O2', rt: 4.046, win: 0.2, f: 0.0001, role: 'inert', n: 0 },
+    { id: 'm5', name: 'C3H8', rt: 5.431, win: 0.2, f: 0.0001, role: 'hc', n: 3 },
+    { id: 'm6', name: 'C2H6', rt: 6.133, win: 0.2, f: 0.00005, role: 'hc', n: 2 },
+    { id: 'm7', name: 'CO', rt: 14.789, win: 0.3, f: 0.0002, role: 'co', n: 1 },
+  ];
+  const ROLES = [['co2', 'CO₂ 反應物'], ['h2', 'H₂ 實測'], ['co', 'CO'], ['hc', '烴類'], ['inert', '空氣（扣除）'], ['is', '內標'], ['ignore', '不使用']];
+  const fresh = () => ({
+    cond: { T: 300, P: 20, GHSV: 3600, TOS: '' },
+    flows: { h2: 240, co2: 66.7, out: 170, is: 0, outMode: 'direct' },
+    h2Mode: 'diff', liqC816: 87.14, restLabel: '',
+    method: DEFAULT_METHOD(), paste: SAMPLE, ov: {}, runs: [], curRun: null,
+  });
+  const LS = 'tcd-tool-v1', LSH = 'tcd-tool-hist-v1';
+  let state;
+  try { state = JSON.parse(localStorage.getItem(LS)); } catch (e) { state = null; }
+  if (!state || !state.method || !state.flows) state = fresh();
+  const newId = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  (state.runs || (state.runs = [])).forEach((r) => { if (!r.id) r.id = newId(); });
+
+  // ---------- undo / redo (whole state is small, so snapshots are the full JSON) ----------
+  let hist = { undo: [], redo: [] };
+  try { const h = JSON.parse(localStorage.getItem(LSH)); if (h && Array.isArray(h.undo)) hist = h; } catch (e) { /* none */ }
+  let prev = null, lastT = 0, lastKey = null, restoring = false;
+  // key: the field being typed in. Keystrokes in the same field less than 1 s apart form one undo step; any other change is its own step.
+  function save(key) {
+    const cur = JSON.stringify(state);
+    if (prev !== null && cur !== prev && !restoring) {
+      const burst = key && key === lastKey && Date.now() - lastT < 1000;
+      if (!burst) { hist.undo.push(prev); if (hist.undo.length > 40) hist.undo.shift(); }
+      hist.redo = []; lastT = Date.now(); lastKey = key || null;
+    }
+    prev = cur;
+    try { localStorage.setItem(LS, cur); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem(LSH, JSON.stringify(hist)); } catch (e) { hist.undo = hist.undo.slice(-10); }
+    $('#btnUndo').disabled = !hist.undo.length; $('#btnRedo').disabled = !hist.redo.length;
+  }
+  function step(dir) {
+    const from = dir < 0 ? hist.undo : hist.redo, to = dir < 0 ? hist.redo : hist.undo;
+    if (!from.length) return;
+    to.push(JSON.stringify(state)); state = JSON.parse(from.pop());
+    restoring = true; try { renderAll(true); } finally { restoring = false; lastKey = null; }
+    toast(dir < 0 ? '已回到上一步' : '已重做');
+  }
+  let toastT;
+  function toast(msg, action) {
+    const t = $('#toast'); t.textContent = msg;
+    if (action) { const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = action.label; b.onclick = () => { t.hidden = true; action.fn(); }; t.appendChild(b); }
+    t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), action ? 6000 : 2600);
+  }
+
+  // ---------- computing ----------
+  let P = { peaks: [] }, A = [], R = null;
+  function compute() {
+    P = T.parsePaste(state.paste);
+    A = T.assign(P.peaks, state.method, state.ov);
+    R = P.peaks.length ? T.calc(state, P.peaks, A) : null;
+  }
+
+  // ---------- rendering ----------
+  const fld = (id, label, val, unit, attrs) => `<label class="fld" for="${id}">${label}<span class="row"><input type="number" id="${id}" value="${val ?? ''}" ${attrs || 'step="any"'}>${unit ? `<span class="u">${unit}</span>` : ''}</span></label>`;
+  function renderInputs() {
+    const c = state.cond, F = state.flows;
+    $('#condForm').innerHTML =
+      fld('cT', 'T', c.T, '°C') + fld('cP', 'P', c.P, 'bar') + fld('cG', 'GHSV', c.GHSV, 'mL g⁻¹ h⁻¹') + fld('cTOS', 'TOS（反應時間）', c.TOS, 'h') +
+      fld('fH2', 'H₂ 入口流量', F.h2, 'mL/min') + fld('fCO2', 'CO₂ 入口流量', F.co2, 'mL/min') +
+      (F.outMode === 'is' ? fld('fIS', '內標入口流量', F.is, 'mL/min') : fld('fOut', '出口流量（校正後）', F.out, 'mL/min')) +
+      fld('liq', '液相 C8–C16 比例', state.liqC816, '%') +
+      `<label class="fld" for="restLab">差減項名稱<span class="row"><input type="text" id="restLab" value="${esc(state.restLabel)}" placeholder="${R ? esc(R.restLabel) : 'C4+'}（自動）"></span></label>`;
+    const ratio = F.co2 > 0 ? F.h2 / F.co2 : NaN;
+    $('#flowModes').innerHTML = `<span>H₂/CO₂ = <b class="mono">${f2(ratio)}</b>（由流量算）</span>
+      <span>出口流量 <span class="seg"><button type="button" data-om="direct" aria-pressed="${F.outMode !== 'is'}">直接輸入</button><button type="button" data-om="is" aria-pressed="${F.outMode === 'is'}">由內標推算</button></span></span>
+      <span>H₂ <span class="seg"><button type="button" data-h2="diff" aria-pressed="${state.h2Mode !== 'measured'}">差減（100 − 其他）</button><button type="button" data-h2="measured" aria-pressed="${state.h2Mode === 'measured'}">實測</button></span></span>`;
+  }
+  function renderPeaks() {
+    const names = []; state.method.forEach((m) => { if (!names.some((x) => x.name === m.name)) names.push(m); });
+    $('#pasteNote').textContent = P.peaks.length ? `讀到 ${P.peaks.length} 根峰。${P.note}` : '還沒有數據：把峰表貼到上面。';
+    if (!R) { $('#peaks').innerHTML = '<tbody><tr><td class="muted">沒有數據</td></tr></tbody>'; return; }
+    const normOf = (name) => { const c = R.comps.find((x) => x.name === name); return c ? c : null; };
+    let sumRaw = 0;
+    const rows = R.peakRows.map((p, i) => {
+      const k = p.pk + '@' + p.rt, m = p.method, c = m ? normOf(m.name.trim()) : null;
+      if (p.raw != null) sumRaw += p.raw;
+      const opts = `<option value="">（不使用）</option>` + state.method.map((x) => `<option value="${x.id}"${m && m.id === x.id ? ' selected' : ''}>${esc(x.name)} · ${x.rt}</option>`).join('');
+      const manual = k in state.ov;
+      return `<tr class="${m ? '' : 'dim'}"><td class="mono">${esc(p.pk)}</td><td class="r mono">${p.rt.toFixed(3)}</td><td class="r mono">${p.area}</td><td><select data-asg="${esc(k)}" aria-label="指定峰 ${esc(p.pk)}">${opts}</select>${manual ? ' <span class="pill" title="手動指定">手動</span>' : ''}</td><td class="r mono">${m ? m.f : '—'}</td><td class="r mono">${p.raw != null ? p.raw.toFixed(4) : '—'}</td></tr>`;
+    }).join('');
+    const h2 = R.h2;
+    const h2row = state.h2Mode !== 'measured' ? `<tr><td></td><td></td><td></td><td>H2（差減）</td><td></td><td class="r mono">${h2.raw.toFixed(4)}</td></tr>` : '';
+    $('#peaks').innerHTML = `<thead><tr><th>Peak#</th><th class="r">Ret.Time</th><th class="r">Area</th><th>指定為</th><th class="r">係數</th><th class="r">濃度 %</th></tr></thead><tbody>${rows}${h2row}<tr class="sum"><td colspan="5">合計</td><td class="r mono">${(sumRaw + (state.h2Mode !== 'measured' ? h2.raw : 0)).toFixed(2)}</td></tr></tbody>`;
+  }
+  function renderMethod() {
+    $('#method').innerHTML = `<thead><tr><th>成分</th><th class="r">RT (min)</th><th class="r">± 容許</th><th class="r">係數 %/面積</th><th>角色</th><th class="r">碳數</th><th></th></tr></thead><tbody>${state.method.map((m, i) => `<tr>
+      <td><input type="text" data-mf="name" data-i="${i}" value="${esc(m.name)}" style="width:72px" aria-label="成分名稱"></td>
+      <td class="r"><input type="number" step="0.001" data-mf="rt" data-i="${i}" value="${m.rt}" style="width:70px" aria-label="RT"></td>
+      <td class="r"><input type="number" step="0.01" data-mf="win" data-i="${i}" value="${m.win}" style="width:54px" aria-label="RT 容許範圍"></td>
+      <td class="r"><input type="text" data-mf="f" data-i="${i}" value="${m.f}" class="mono" style="width:84px" aria-label="校正係數"></td>
+      <td><select data-mf="role" data-i="${i}" aria-label="角色">${ROLES.map(([k, l]) => `<option value="${k}"${m.role === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td class="r">${m.role === 'hc' ? `<input type="number" min="1" max="10" step="1" data-mf="n" data-i="${i}" value="${m.n || 1}" style="width:46px" aria-label="碳數">` : '<span class="muted">—</span>'}</td>
+      <td><button type="button" class="linkbtn" data-mdel="${i}" aria-label="刪除這列">×</button></td></tr>`).join('')}</tbody>`;
+  }
+  function renderResults() {
+    if (!R) { $('#kpis').innerHTML = ''; $('#results').innerHTML = ''; $('#summary').innerHTML = ''; $('#checks').innerHTML = ''; $('#fx').innerHTML = ''; $('#resNote').textContent = '貼上數據後顯示'; return; }
+    const over = isFinite(R.Xh2) && R.Xh2 > R.Xh2Max + 1e-9;
+    const kpi = (k, v, flag) => `<div class="kpi${flag ? ' flag' : ''}"><div class="k">${k}</div><div class="v num">${f2(v)}<small>%</small></div></div>`;
+    $('#kpis').innerHTML = kpi('CO₂ conversion', R.Xco2) + kpi('H₂ conversion', R.Xh2, over) + kpi('CO selectivity', R.Sco) + kpi('CO yield', R.Yco);
+    $('#resNote').textContent = `出口流量 ${f2(R.Fout)} mL/min${R.outNote ? '；' + R.outNote : ''}`;
+    const nmax = R.hc.length ? Math.max(...R.hc.map((x) => x.n)) : 1;
+    const midLab = nmax >= 3 ? `C2–C${nmax}` : 'C2';
+    const coF = R.comps.filter((c) => c.role === 'co').reduce((t, c) => t + c.fout, 0);
+    const row = (sw, name, n, fout, Y, S, St, cls) => `<tr class="${cls || ''}"><td>${sw ? `<span class="sw" style="background:${sw}"></span>` : ''}${name}</td><td class="r mono">${f2(Y)}</td><td class="r mono">${S == null ? '' : f2(S)}</td><td class="r mono">${St == null ? '' : f2(St)}</td><td class="r mono">${fout != null ? f2(fout, 3) : ''}</td><td class="r mono">${n ?? ''}</td></tr>`;
+    $('#results').innerHTML = `<thead><tr><th>Product</th><th class="r">Yield %</th><th class="r">Selectivity %<br><span class="muted small">扣除 CO 基準</span></th><th class="r">Selectivity %<br><span class="muted small">含 CO 基準</span></th><th class="r">出口流量<br><span class="muted small">mL/min</span></th><th class="r">碳數</th></tr></thead><tbody>
+      ${row('var(--c-co)', 'CO', 1, coF, R.Yco, null, R.Sco)}
+      ${R.hc.map((x) => row('var(--c-hc)', x.name, x.n, x.fout, x.Y, x.S, x.Stot)).join('')}
+      ${row('', esc(R.restLabel) + '（差減）', `≥${nmax + 1}`, null, R.Yrest, R.Srest, R.SrestTot)}
+      ${R.Sc816 != null ? row('', 'C8–C16（' + esc(R.restLabel) + ' × 液相比例）', '', null, R.Yc816, R.Sc816, R.Yc816 / R.Xco2 * 100) : ''}
+      <tr class="sum"><td>合計（CO + 烴類 + 差減）</td><td class="r mono">${f2(R.Yco + R.hc.reduce((t, x) => t + x.Y, 0) + R.Yrest)}</td><td class="r mono">${f2(R.hc.reduce((t, x) => t + x.S, 0) + R.Srest)}</td><td class="r mono">${f2(R.Sco + R.hc.reduce((t, x) => t + x.Stot, 0) + R.SrestTot)}</td><td></td><td></td></tr></tbody>`;
+    const sum = summaryRow();
+    $('#summary').innerHTML = `<thead><tr><th class="r">CO₂ conv.</th><th class="r">H₂ conv.</th><th class="r">CO yield</th><th class="r">CO sele.</th><th class="r">Sel. C1</th><th class="r">Sel. ${midLab}</th><th class="r">Sel. ${esc(R.restLabel)}</th><th class="r">Sel. C8–C16</th><th class="r">C8–C16 in liq.</th><th class="r">Yield C1</th><th class="r">Yield ${midLab}</th><th class="r">Yield ${esc(R.restLabel)}</th><th class="r">Yield C8–C16</th></tr></thead><tbody><tr>${sum.map((v) => `<td class="r mono">${f2(v)}</td>`).join('')}</tr></tbody>`;
+    renderChecks(over);
+    renderFx();
+    updateFigPreview(150);
+  }
+  function summaryRow() {
+    return [R.Xco2, R.Xh2, R.Yco, R.Sco, R.groups.C1, R.groups.C2C4, R.Srest, R.Sc816, state.liqC816, R.groups.YC1, R.groups.YC2C4, R.Yrest, R.Yc816];
+  }
+  function renderChecks(over) {
+    const out = [];
+    const ratio = R.h2Ratio;
+    if (over) out.push(`<div class="chk bad"><b>H₂ 轉化率超過化學計量上限</b><div class="d">就算轉化的 CO₂ 全部變成 CH₄（最耗 H₂ 的情況），H₂ 轉化率最多是 4 × X_CO₂ ÷ (H₂/CO₂) = 4 × ${f2(R.Xco2)}% ÷ ${f2(ratio)} = ${f2(R.Xh2Max)}%，現在算出 ${f2(R.Xh2)}%。${state.h2Mode !== 'measured' ? 'H₂ 是差減得到的，其他成分的誤差會全部累積到 H₂。' : ''}</div></div>`);
+    else if (isFinite(R.Xh2)) out.push(`<div class="chk ok"><b>H₂ 轉化率在化學計量上限內</b><div class="d">${f2(R.Xh2)}% ≤ 4 × ${f2(R.Xco2)}% ÷ ${f2(ratio)} = ${f2(R.Xh2Max)}%</div></div>`);
+    if (isFinite(R.h2Consumed) && R.h2Need > 0) {
+      const q = R.h2Consumed / R.h2Need;
+      out.push(`<div class="chk ${q > 1.15 || q < 0.85 ? 'warn' : 'ok'}"><b>H₂ 平衡：量到消耗 ${f2(R.h2Consumed)} mL/min，產物需要 ${f2(R.h2Need)} mL/min（比值 ${f2(q)}）</b><div class="d">需要量 = CO×1 + Σ(3n+1)×烷烴 + ${esc(R.restLabel)} 碳 × 3（以 CH₂ 估）。比值偏離 1 越多，H₂ 或出口流量的誤差越大。</div></div>`);
+    }
+    out.push(`<div class="chk ${R.Yrest < 0 ? 'bad' : 'info'}"><b>氣相碳回收 ${f2(R.carbonGas)}%</b><div class="d">${R.Yrest < 0 ? `氣相量到的碳已經超過入口，${esc(R.restLabel)} 差減成負值；檢查校正係數或出口流量。` : `剩下 ${f2(100 - R.carbonGas)}% 的入口碳歸到 ${esc(R.restLabel)}。這是差減值，包含液相產物、沒量到的氣體（例如 C4、烯烴）和所有量測誤差。`}</div></div>`);
+    const un = R.peakRows.filter((p) => !p.method);
+    if (un.length) out.push(`<div class="chk info"><b>${un.length} 根峰沒有被使用</b><div class="d">${un.map((p) => `${p.rt.toFixed(3)} min（面積 ${p.area}）`).join('、')}。如果其中有產物，請在上面的表或校正方法裡指定。</div></div>`);
+    if (state.h2Mode !== 'measured' && R.h2.raw < 0) out.push(`<div class="chk bad"><b>其他成分加總超過 100%</b><div class="d">H₂ 差減成負值，請檢查校正係數。</div></div>`);
+    const inert = R.comps.filter((c) => c.role === 'inert').reduce((t, c) => t + c.raw, 0);
+    if (inert > 5) out.push(`<div class="chk warn"><b>空氣成分 ${f2(inert)}%</b><div class="d">Air / O₂ 比例偏高，可能是取樣漏氣；結果已扣除它們再歸一化。</div></div>`);
+    $('#checks').innerHTML = out.join('');
+  }
+  function renderFx() {
+    const F = state.flows, y = (name) => { const c = R.comps.find((x) => x.name === name); return c && c.norm != null ? c.norm / 100 : null; };
+    const co2 = R.comps.find((c) => c.role === 'co2'), co = R.comps.filter((c) => c.role === 'co');
+    const yco2 = co2 ? co2.norm / 100 : NaN, yh2 = R.h2 && R.h2.norm != null ? R.h2.norm / 100 : NaN, yco = co.reduce((t, c) => t + (c.norm || 0), 0) / 100;
+    const D = R.D;
+    const isMode = F.outMode === 'is';
+    const lines = [
+      ['空氣扣除後歸一化', `y_i = 濃度_i ÷ ${f2(D, 4)}（扣除 Air、O₂ 後的總和）`],
+      ['CO₂ 轉化率', isMode ? `X_CO₂ = (F_CO₂,in − F_CO₂,out) ÷ F_CO₂,in，F_CO₂,out 由內標推算` : `X_CO₂ = (F_CO₂,in − F_out × y_CO₂) ÷ F_CO₂,in = (${f2(+F.co2)} − ${f2(R.Fout)} × ${f2(yco2, 4)}) ÷ ${f2(+F.co2)} = ${f2(R.Xco2)}%`],
+      ['H₂ 轉化率', isMode ? `X_H₂ = (F_H₂,in − F_H₂,out) ÷ F_H₂,in` : `X_H₂ = (${f2(+F.h2)} − ${f2(R.Fout)} × ${f2(yh2, 4)}) ÷ ${f2(+F.h2)} = ${f2(R.Xh2)}%`],
+      ['CO 產率與選擇性', `Y_CO = F_out × y_CO ÷ F_CO₂,in = ${f2(R.Fout)} × ${f2(yco, 4)} ÷ ${f2(+F.co2)} = ${f2(R.Yco)}%；S_CO = Y_CO ÷ X_CO₂ = ${f2(R.Sco)}%`],
+      ['烴類產率', R.hc.map((x) => `Y_${x.name} = ${x.n} × ${f2(x.fout, 3)} ÷ ${f2(+F.co2)} = ${f2(x.Y)}%`).join('；')],
+      ['烴類選擇性（扣除 CO）', `S_i = Y_i ÷ (X_CO₂ − Y_CO) = Y_i ÷ ${f2(R.Xco2 - R.Yco)}%`],
+      [`${R.restLabel}（差減）`, `Y = X_CO₂ − Y_CO − ΣY_i = ${f2(R.Yrest)}%；S = 100 − ΣS_i = ${f2(R.Srest)}%`],
+    ];
+    if (R.Sc816 != null) lines.push(['C8–C16', `S = S_${R.restLabel} × ${f2(state.liqC816)}% = ${f2(R.Sc816)}%；Y = Y_${R.restLabel} × ${f2(state.liqC816)}% = ${f2(R.Yc816)}%`]);
+    $('#fx').innerHTML = lines.map(([l, e]) => `<div><div class="lab">${l}</div><div class="eq">${esc(e)}</div></div>`).join('') +
+      (R.Sc816 != null ? `<div class="chk info"><b>跟你原本 Excel 的差別</b><div class="d">原本 Summary 的 C8–C16 產率是 X_CO₂ × S_C8–C16 = ${f2(R.Xco2 * R.Sc816 / 100)}%。但 S_C8–C16 是扣除 CO 的基準，換算成產率要再乘 (1 − S_CO)，也就是上面的 ${f2(R.Yc816)}%。其他數字都跟原本的 Excel 一樣。</div></div>` : '');
+  }
+  function renderRuns() {
+    const rs = state.runs;
+    if (!rs.length) { $('#runs').innerHTML = '<tbody><tr><td class="muted">還沒有存任何一筆。算好之後按「存成一筆」。</td></tr></tbody>'; return; }
+    $('#runs').innerHTML = `<thead><tr><th>名稱</th><th class="r">T</th><th class="r">P</th><th class="r">GHSV</th><th class="r">TOS</th><th class="r">X CO₂</th><th class="r">X H₂</th><th class="r">S CO</th><th class="r">Y CO</th><th class="r">S C1</th><th class="r">S C2–Cn</th><th class="r">S 差減</th><th class="r">S C8–C16</th><th class="r">Y C8–C16</th><th class="r">氣相碳 %</th><th>標記</th><th></th></tr></thead><tbody>${rs.map((r, i) => `<tr class="click${state.curRun === i ? ' cur' : ''}" data-load="${i}"><td>${esc(r.name)}</td><td class="r mono">${esc(r.cond.T)}</td><td class="r mono">${esc(r.cond.P)}</td><td class="r mono">${esc(r.cond.GHSV)}</td><td class="r mono">${esc(r.cond.TOS ?? '')}</td>${['Xco2', 'Xh2', 'Sco', 'Yco', 'C1', 'C2C4', 'Srest', 'Sc816', 'Yc816', 'carbonGas'].map((k) => `<td class="r mono">${f2(r.res[k])}</td>`).join('')}<td>${r.res.Xh2 > r.res.Xh2Max + 1e-9 ? '<span class="pill b">H₂ 超過上限</span>' : ''}</td><td><button type="button" class="linkbtn" data-rdel="${i}" aria-label="刪除 ${esc(r.name)}">×</button></td></tr>`).join('')}</tbody>`;
+  }
+  function focusKey() {
+    const a = document.activeElement; if (!a || a === document.body) return null;
+    if (a.id) return '#' + CSS.escape(a.id);
+    const ds = Object.entries(a.dataset || {});
+    return ds.length ? ds.map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}="${CSS.escape(v)}"]`).join('') : null;
+  }
+  function renderAll(withInputs) {
+    const fk = focusKey();
+    renderAll0(withInputs);
+    if (fk) { const el = document.querySelector(fk); if (el && el !== document.activeElement) el.focus({ preventScroll: true }); }
+  }
+  function renderAll0(withInputs) {
+    compute();
+    if (withInputs) { renderInputs(); renderMethod(); $('#paste').value = state.paste; }
+    else { const fr = document.activeElement && document.activeElement.closest && document.activeElement.closest('#condForm'); if (!fr) renderInputs(); else $('#flowModes').innerHTML.length && renderModesOnly(); }
+    renderPeaks(); renderResults(); renderRuns(); renderFigEditor(); renderGridEditor(); save();
+  }
+  function renderModesOnly() { const F = state.flows, ratio = F.co2 > 0 ? F.h2 / F.co2 : NaN; const b = $('#flowModes b'); if (b) b.textContent = f2(ratio); }
+
+  // ---------- run snapshots ----------
+  function snapRes() {
+    return { Xco2: R.Xco2, Xh2: R.Xh2, Xh2Max: R.Xh2Max, Sco: R.Sco, Yco: R.Yco, C1: R.groups.C1, C2C4: R.groups.C2C4, Srest: R.Srest, Sc816: R.Sc816, Yc816: R.Yc816, carbonGas: R.carbonGas, restLabel: R.restLabel, Yrest: R.Yrest, YC1: R.groups.YC1, YC2C4: R.groups.YC2C4,
+      hc: R.hc.map((x) => ({ name: x.name, n: x.n, fout: x.fout, Y: x.Y, S: x.S })), Fout: R.Fout };
+  }
+  const RUNHEAD = ['Name', 'T (°C)', 'P (bar)', 'GHSV', 'TOS (h)', 'F_H2,in', 'F_CO2,in', 'F_out', 'CO2 conv. (%)', 'H2 conv. (%)', 'H2 conv. max (%)', 'CO yield (%)', 'CO sele. (%)', 'Sel. C1 (%)', 'Sel. C2-Cn (%)', 'Sel. rest (%)', 'Rest label', 'Sel. C8-C16 (%)', 'C8-C16 in liq. (%)', 'Yield C1 (%)', 'Yield C2-Cn (%)', 'Yield rest (%)', 'Yield C8-C16 (%)', 'Gas carbon recovery (%)'];
+  const runRow = (r) => [r.name, r.cond.T, r.cond.P, r.cond.GHSV, r.cond.TOS, r.flows.h2, r.flows.co2, +(+r.res.Fout).toFixed(3), r.res.Xco2, r.res.Xh2, r.res.Xh2Max, r.res.Yco, r.res.Sco, r.res.C1, r.res.C2C4, r.res.Srest, r.res.restLabel, r.res.Sc816, r.liqC816, r.res.YC1, r.res.YC2C4, r.res.Yrest, r.res.Yc816, r.res.carbonGas].map((v) => (typeof v === 'number' && isFinite(v) ? +v.toFixed(4) : v ?? ''));
+
+  // ---------- events ----------
+  const NUMF = { cT: ['cond', 'T'], cP: ['cond', 'P'], cG: ['cond', 'GHSV'], cTOS: ['cond', 'TOS'], fH2: ['flows', 'h2'], fCO2: ['flows', 'co2'], fOut: ['flows', 'out'], fIS: ['flows', 'is'] };
+  document.addEventListener('input', (e) => {
+    if (figInput(e.target)) return;
+    const t = e.target, key = t.id || (t.dataset && t.dataset.mf ? t.dataset.mf + t.dataset.i : null);
+    if (NUMF[t.id]) { const [g, k] = NUMF[t.id]; const v = parseFloat(t.value); state[g][k] = isFinite(v) ? v : ''; compute(); renderModesOnly(); renderPeaks(); renderResults(); save(key); return; }
+    if (t.id === 'liq') { const v = parseFloat(t.value); state.liqC816 = isFinite(v) ? v : ''; compute(); renderResults(); save(key); return; }
+    if (t.id === 'restLab') { state.restLabel = t.value; compute(); renderResults(); save(key); return; }
+    if (t.id === 'paste') { state.paste = t.value; compute(); renderPeaks(); renderResults(); save(key); return; }
+    if (t.dataset && t.dataset.mf && t.dataset.mf !== 'role') {
+      const m = state.method[+t.dataset.i], k = t.dataset.mf;
+      if (k === 'name') m.name = t.value; else { const v = parseFloat(t.value); if (isFinite(v)) m[k] = v; }
+      compute(); renderPeaks(); renderResults(); save(key); return;
+    }
+  });
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (figChange(t)) return;
+    if (t.dataset && t.dataset.asg != null) { const k = t.dataset.asg; const auto = T.assign(P.peaks, state.method, {}); const idx = P.peaks.findIndex((p) => p.pk + '@' + p.rt === k); if (t.value === (auto[idx] || '')) delete state.ov[k]; else state.ov[k] = t.value; renderAll(); return; }
+    if (t.dataset && t.dataset.mf === 'role') { state.method[+t.dataset.i].role = t.value; if (t.value === 'hc' && !state.method[+t.dataset.i].n) state.method[+t.dataset.i].n = 1; renderAll(true); return; }
+  });
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    if (figClick(t)) return;
+    const om = t.closest('[data-om]'); if (om) { state.flows.outMode = om.dataset.om; renderAll(true); return; }
+    const h2 = t.closest('[data-h2]'); if (h2) { state.h2Mode = h2.dataset.h2; if (h2.dataset.h2 === 'measured' && !state.method.some((m) => m.role === 'h2')) toast('實測模式需要在校正方法裡新增一列 H₂（角色選「H₂（實測）」）'); renderAll(true); return; }
+    const md = t.closest('[data-mdel]'); if (md) { const i = +md.dataset.mdel, gone = state.method[i]; state.method.splice(i, 1); renderAll(true); toast(`已刪除「${gone.name}」`, { label: '上一步', fn: () => step(-1) }); return; }
+    if (t.id === 'btnAddRow') { state.method.push({ id: 'm' + Date.now().toString(36), name: '新成分', rt: 0, win: 0.15, f: 0.0001, role: 'hc', n: 1 }); renderAll(true); return; }
+    if (t.id === 'btnResetMethod') { state.method = DEFAULT_METHOD(); state.ov = {}; renderAll(true); toast('已還原校正方法', { label: '上一步', fn: () => step(-1) }); return; }
+    if (t.id === 'btnSample') { state.paste = SAMPLE; state.ov = {}; renderAll(true); return; }
+    if (t.id === 'btnClearPaste') { state.paste = ''; state.ov = {}; renderAll(true); $('#paste').focus(); return; }
+    if (t.id === 'btnUndo') { step(-1); return; }
+    if (t.id === 'btnRedo') { step(1); return; }
+    if (t.id === 'btnSave') {
+      if (!R) { toast('先貼上數據'); return; }
+      const c0 = state.cond, name = $('#runName').value.trim() || `${c0.T} °C · ${c0.P} bar${c0.TOS !== '' && c0.TOS != null ? ` · TOS ${c0.TOS} h` : ''} · #${state.runs.length + 1}`;
+      state.runs.push({ id: newId(), name, savedAt: Date.now(), cond: { ...state.cond }, flows: { ...state.flows }, h2Mode: state.h2Mode, liqC816: state.liqC816, restLabel: state.restLabel, method: JSON.parse(JSON.stringify(state.method)), paste: state.paste, ov: { ...state.ov }, res: snapRes() });
+      state.curRun = state.runs.length - 1; $('#runName').value = ''; renderAll(); toast(`已存「${name}」`); return;
+    }
+    const rd = t.closest('[data-rdel]'); if (rd) { e.stopPropagation(); const i = +rd.dataset.rdel, gone = state.runs[i]; state.runs.splice(i, 1); if (state.curRun === i) state.curRun = null; renderAll(); toast(`已刪除「${gone.name}」`, { label: '上一步', fn: () => step(-1) }); return; }
+    const ld = t.closest('[data-load]'); if (ld) { const r = state.runs[+ld.dataset.load]; Object.assign(state, { cond: { ...r.cond }, flows: { ...r.flows }, h2Mode: r.h2Mode, liqC816: r.liqC816, restLabel: r.restLabel, method: JSON.parse(JSON.stringify(r.method)), paste: r.paste, ov: { ...r.ov }, curRun: +ld.dataset.load }); $('#runName').value = r.name; renderAll(true); toast(`已載入「${r.name}」；修改後再按「存成一筆」會存成新的一筆`); return; }
+    if (t.id === 'btnCopy') { copyText(currentTSV(), '已複製目前結果，可直接貼到 Excel'); return; }
+    if (t.id === 'btnCopyRuns') { copyText([RUNHEAD].concat(state.runs.map(runRow)).map((r) => r.join('\t')).join('\n'), '已複製已存的數據'); return; }
+    if (t.id === 'btnExport') { exportXlsx(); return; }
+  });
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
+      const tg = e.target, typing = tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(tg.type)));
+      if (!typing) { e.preventDefault(); step(e.key === 'y' || e.shiftKey ? 1 : -1); }
+    }
+  });
+  function currentTSV() {
+    if (!R) return '';
+    const head = ['', 'Yield (%)', 'Selectivity CO-free (%)', 'Selectivity total-C (%)', 'Outlet flow (mL/min)'];
+    const lines = [['CO2 conversion (%)', f2(R.Xco2, 4)], ['H2 conversion (%)', f2(R.Xh2, 4)], ['CO yield (%)', f2(R.Yco, 4)], ['CO selectivity (%)', f2(R.Sco, 4)], [], head,
+      ...R.hc.map((x) => [x.name, f2(x.Y, 4), f2(x.S, 4), f2(x.Stot, 4), f2(x.fout, 4)]), [R.restLabel + ' (by difference)', f2(R.Yrest, 4), f2(R.Srest, 4), f2(R.SrestTot, 4), ''],
+      ...(R.Sc816 != null ? [['C8-C16', f2(R.Yc816, 4), f2(R.Sc816, 4), '', '']] : []), [], ['Gas carbon recovery (%)', f2(R.carbonGas, 4)], ['H2 conversion upper bound (%)', f2(R.Xh2Max, 4)]];
+    return lines.map((r) => r.join('\t')).join('\n');
+  }
+  async function copyText(text, msg) {
+    try { await navigator.clipboard.writeText(text); toast(msg); }
+    catch (e) { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); toast(ok ? msg : '瀏覽器不允許複製'); }
+  }
+  let downloads = null;
+  (async () => { try { if (window.claude && window.claude.use) downloads = await window.claude.use('downloads'); } catch (e) { downloads = null; } $('#btnExport').hidden = !downloads || typeof XLSX === 'undefined'; if (downloads) { renderFigEditor(); renderGridEditor(); } })();
+  async function exportXlsx() {
+    if (!downloads || typeof XLSX === 'undefined') return;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([RUNHEAD].concat(state.runs.map(runRow))), 'Runs');
+    if (R) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(currentTSV().split('\n').map((l) => l.split('\t').map((v) => (v !== '' && isFinite(+v) ? +v : v)))), 'Current');
+      const comp = [['Compound', 'Role', 'Carbon no.', 'Conc. (%)', 'Air-free (%)', 'Outlet flow (mL/min)']].concat(R.comps.map((c) => [c.name, c.role, c.n, +c.raw.toFixed(5), c.norm == null ? '' : +c.norm.toFixed(5), c.fout == null ? '' : +c.fout.toFixed(5)]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(comp), 'Composition');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Peak#', 'Ret.Time', 'Area', 'Assigned', 'Factor', 'Conc. (%)']].concat(R.peakRows.map((p) => [p.pk, p.rt, p.area, p.method ? p.method.name : '', p.method ? p.method.f : '', p.raw == null ? '' : +p.raw.toFixed(5)]))), 'Peaks');
+    }
+    figList().forEach((F, i) => { try { XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(figData(F)), `Fig${i + 1} data`); } catch (e) { /* figure has nothing to plot */ } });
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    try { await downloads.save({ filename: 'TCD_results.xlsx', data: new Blob([buf]) }); toast('已匯出 TCD_results.xlsx'); }
+    catch (err) { if (err && err.code === 'declined') return; toast('這個檢視無法下載檔案'); }
+  }
+
+  // ================= figures (inlined into the app IIFE by build.py) =================
+  const SANS = '"IBM Plex Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif';
+  const MAXFIG = 9;
+  const C_GRID = '#e3e7e5', C_AXIS = '#9aa39f', C_TICK = '#535b58', C_LAB = '#3d4542', C_INK = '#121615';
+  const TICK = 14.5, LAB = 15.5, VAL = 12.5, PH = 360;
+  const SHAPES = ['circle', 'square', 'triUp', 'diamond', 'triDown', 'hex', 'star', 'plus'];
+  const HC_PAL = ['#2a78d6', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#e34948', '#8a5a00', '#5d6bd8'];
+  const DEF_COL = { 'sp:CO': '#eb6834', 'sp:rest': '#4a3aa7', 'sp:c816': '#7e3fa0', 'sp:restOther': '#b3aee6', 'm:Xco2': '#121615', 'm:Xh2': '#7a827e', 'm:carbonGas': '#0f8a8a', 'm:SC2n': '#6f8f1f' };
+  const SUBS = '₀₁₂₃₄₅₆₇₈₉';
+  const chem = (s) => (/^(C\d*H\d+|CO2?|H2|O2|N2)$/.test(String(s)) ? String(s).replace(/\d/g, (d) => SUBS[+d]) : String(s));
+  const isNum = (v) => v !== '' && v != null && isFinite(+v);
+  const fin = (v) => (v != null && isFinite(v) ? +v : null);
+  const rd = (v) => (v == null || !isFinite(v) ? '' : +(+v).toFixed(4));
+  const TX = {
+    zh: {
+      Xco2: 'CO₂ 轉化率', Xh2: 'H₂ 轉化率', Sco: 'CO 選擇性', Yco: 'CO 產率', S: (n) => `${n} 選擇性`, Y: (n) => `${n} 產率`, carbonGas: '氣相碳回收', other: (l) => `其他 ${l}`, rest: '差減項',
+      conv: '轉化率 (%)', sel: '選擇性 (%)', selCF: '選擇性，扣除 CO (%)', yld: '產率 (%)', pct: '(%)',
+      T: '溫度 (°C)', P: '壓力 (bar)', GHSV: 'GHSV (mL g⁻¹ h⁻¹)', TOS: '反應時間 (h)',
+      tStack: '產物選擇性與轉化率', tSel: '產物選擇性', tStackOv: (w) => `產物選擇性與${w.join('、')}`,
+      gw: { conv: '轉化率', sel: '選擇性', yld: '產率', other: '氣相碳回收' }, tw: { conv: '轉化率', yld: '產率', other: '氣相碳回收' }, axJoin: (w) => `${w.join(' / ')} (%)`, tBar: '各筆數據比較', tDist: (n) => `${n} 產物分布`,
+      tLine: (x) => (x === 'run' ? '各筆數據趨勢' : `${{ T: '溫度', P: '壓力', GHSV: 'GHSV', TOS: '反應時間' }[x]}的影響`),
+      cur: '目前計算', selW: '選擇性', yldW: '產率', name: '名稱', prod: '產物',
+    },
+    en: {
+      Xco2: 'CO₂ conversion', Xh2: 'H₂ conversion', Sco: 'CO selectivity', Yco: 'CO yield', S: (n) => `${n} selectivity`, Y: (n) => `${n} yield`, carbonGas: 'Gas-phase carbon recovery', other: (l) => `Other ${l}`, rest: 'Rest (by difference)',
+      conv: 'Conversion (%)', sel: 'Selectivity (%)', selCF: 'Selectivity, CO-free (%)', yld: 'Yield (%)', pct: '(%)',
+      T: 'Temperature (°C)', P: 'Pressure (bar)', GHSV: 'GHSV (mL g⁻¹ h⁻¹)', TOS: 'Time on stream (h)',
+      tStack: 'Product selectivity and conversion', tSel: 'Product selectivity', tStackOv: (w) => `Product selectivity${w.length > 1 ? ', ' + w.slice(0, -1).join(', ') + ' and ' : ' and '}${w[w.length - 1]}`,
+      gw: { conv: 'Conversion', sel: 'Selectivity', yld: 'Yield', other: 'Carbon recovery' }, tw: { conv: 'conversion', yld: 'yield', other: 'carbon recovery' }, axJoin: (w) => `${w.join(' / ')} (%)`, tBar: 'Comparison', tDist: (n) => `${n}: product distribution`,
+      tLine: (x) => (x === 'run' ? 'Trends' : `Effect of ${{ T: 'temperature', P: 'pressure', GHSV: 'GHSV', TOS: 'time on stream' }[x]}`),
+      cur: 'Current', selW: 'Selectivity', yldW: 'Yield', name: 'Run', prod: 'Product',
+    },
+  };
+  const FTYPES = [['stack', '堆疊＋右軸疊圖'], ['bar', '分組長條'], ['line', '折線'], ['dist', '單筆分布']];
+  const XVARS = [['run', '依順序（顯示名稱）'], ['T', '溫度 T'], ['P', '壓力 P'], ['GHSV', 'GHSV'], ['TOS', '反應時間 TOS']];
+
+  // ---------- small drawing helpers ----------
+  function nice(min, max, n) {
+    if (!(max > min)) { min -= 1; max += 1; }
+    const raw = (max - min) / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), e = raw / mag;
+    const step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag;
+    const t = []; for (let v = Math.ceil(min / step - 1e-9) * step; v <= max + 1e-9; v += step) t.push(+v.toFixed(10));
+    return { t, step };
+  }
+  const tickFmt = (v, step) => (step >= 1 ? v.toFixed(0) : v.toFixed(Math.min(3, Math.ceil(-Math.log10(step)))));
+  const roundTop = (x, y, w, h, r) => { r = Math.min(r, w / 2, h); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
+  function marker(shape, x, y, r, fill, stroke, sw) {
+    const a = `fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"`;
+    const P2 = (pts) => `<path d="M${pts.map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join('L')}Z" ${a}/>`;
+    const poly = (n, rr, rot) => Array.from({ length: n }, (_, i) => { const t = rot + (i * 2 * Math.PI) / n; return [x + rr * Math.cos(t), y + rr * Math.sin(t)]; });
+    switch (shape) {
+      case 'square': { const q = r * 0.88; return `<rect x="${x - q}" y="${y - q}" width="${2 * q}" height="${2 * q}" ${a}/>`; }
+      case 'triUp': return P2(poly(3, r * 1.3, -Math.PI / 2));
+      case 'triDown': return P2(poly(3, r * 1.3, Math.PI / 2));
+      case 'diamond': return P2(poly(4, r * 1.25, -Math.PI / 2));
+      case 'hex': return P2(poly(6, r * 1.1, 0));
+      case 'star': return P2(Array.from({ length: 10 }, (_, i) => { const t = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.6 : r * 1.4; return [x + rr * Math.cos(t), y + rr * Math.sin(t)]; }));
+      case 'plus': { const q = r * 1.15, w = r * 0.42; return P2([[x - w, y - q], [x + w, y - q], [x + w, y - w], [x + q, y - w], [x + q, y + w], [x + w, y + w], [x + w, y + q], [x - w, y + q], [x - w, y + w], [x - q, y + w], [x - q, y - w], [x - w, y - w]]); }
+      default: return `<circle cx="${x}" cy="${y}" r="${r}" ${a}/>`;
+    }
+  }
+  const textW = (() => { const cv = document.createElement('canvas').getContext('2d'); return (t, px, bold) => { cv.font = `${bold ? '600 ' : ''}${px}px ${SANS}`; return cv.measureText(String(t)).width; }; })();
+  const tx = (x, y, s, o) => { o = o || {}; return `<text x="${x}" y="${y}"${o.a ? ` text-anchor="${o.a}"` : ''} font-family='${SANS}' font-size="${o.fs || TICK}"${o.b ? ' font-weight="600"' : ''} fill="${o.c || C_LAB}">${esc(s)}</text>`; };
+  const yLab = (x, y, s, rot) => `<text transform="translate(${x} ${y}) rotate(${rot})" text-anchor="middle" font-family='${SANS}' font-size="${LAB}" fill="${C_LAB}">${esc(s)}</text>`;
+  function tint(hex, a) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * a).toString(16).padStart(2, '0')).join('');
+  }
+  function shade(hex, a) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v * (1 - a)).toString(16).padStart(2, '0')).join('');
+  }
+  function lum(hex) { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return 1; const n = parseInt(m[1], 16); return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; }
+  // y range: from 0 (or the lowest negative value) to a little above the largest, rounded to nice ticks; fixed ends win
+  function domain(vals, fmin, fmax) {
+    const v = vals.filter((x) => x != null && isFinite(x));
+    let lo = isNum(fmin) ? +fmin : Math.min(0, ...v);
+    let hi = isNum(fmax) ? +fmax : (v.length ? Math.max(...v) : 1);
+    if (!isNum(fmax)) hi = hi > lo ? lo + (hi - lo) * 1.08 : lo + 1;
+    if (!(hi > lo)) hi = lo + 1;
+    let t = nice(lo, hi, 5);
+    if (!isNum(fmin) && lo < 0) { lo = Math.floor(lo / t.step - 1e-9) * t.step; t = nice(lo, hi, 5); }
+    if (!isNum(fmax)) { hi = Math.ceil(hi / t.step - 1e-9) * t.step; t = nice(lo, hi, 5); }
+    return { lo, hi, t };
+  }
+  const scale = (D, top) => (v) => top + PH - ((Math.max(D.lo, Math.min(D.hi, v)) - D.lo) / (D.hi - D.lo)) * PH;
+  function yTicks(D, sy, x1, x2, side) {
+    let g = '';
+    for (const v of D.t.t) {
+      if (v < D.lo - 1e-9 || v > D.hi + 1e-9) continue;
+      if (side === 'l') g += `<line x1="${x1}" x2="${x2}" y1="${sy(v)}" y2="${sy(v)}" stroke="${C_GRID}" stroke-width="1"/>`;
+      g += tx(side === 'l' ? x1 - 8 : x2 + 8, sy(v) + 5, tickFmt(v, D.t.step), { a: side === 'l' ? 'end' : 'start', c: C_TICK });
+    }
+    return g;
+  }
+  // category labels under the axis: rotate 45° as soon as one name is wider than its slot
+  function catLayout(names, slots) {
+    const lw = names.map((n) => textW(n, TICK));
+    const rot = names.some((n, i) => lw[i] > slots[i] - 4);
+    return { lw, rot, h: rot ? Math.max(0, ...lw) * Math.SQRT1_2 + 20 : 24 };
+  }
+  const catLabels = (names, cx, y0, lay) => names.map((n, i) => (lay.rot
+    ? `<text transform="translate(${cx[i] + 4} ${y0 + 14}) rotate(-45)" text-anchor="end" font-family='${SANS}' font-size="${TICK}" fill="${C_LAB}">${esc(n)}</text>`
+    : tx(cx[i], y0 + 20, n, { a: 'middle' }))).join('');
+  const clampW = (v, d) => Math.max(2, Math.min(200, +v || d));
+  const clampG = (v, d) => Math.max(0, Math.min(300, v === 0 || v === '0' ? 0 : +v || d));
+  const pngScale = (w, h) => Math.max(1, Math.min(3, 14000 / Math.max(w, h), Math.sqrt(1.2e8 / (w * h))));
+  const safeName = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').replace(/_+/g, '_').slice(0, 80);
+
+  // ---------- figure state ----------
+  const figNew = (type) => ({ type: type || 'stack', lang: 'zh', basis: 'tot', split816: false, conv: { Xco2: true, Xh2: false }, convLine: true, metrics: ['Xco2', 'Xh2'], xVar: 'run', distRid: 'cur', distVal: 'S', barW: type === 'bar' ? 22 : type === 'dist' ? 40 : 34, gap: 30, ymin: '', ymax: '', y2max: '', labels: 'none', title: '', x: '', y: '', y2: '', items: [] });
+  function figList() {
+    if (!Array.isArray(state.figs) || !state.figs.length) { state.figs = [figNew('stack'), figNew('dist')]; }
+    if (!(state.figIdx >= 0 && state.figIdx < state.figs.length)) state.figIdx = 0;
+    return state.figs;
+  }
+  const curFig = () => figList()[state.figIdx];
+  const userCols = () => state.colors || (state.colors = {});
+  function syncItems(F) {
+    const ids = new Set(state.runs.map((r) => r.id));
+    if (!Array.isArray(F.items)) F.items = [];
+    F.items = F.items.filter((it) => ids.has(it.rid));
+    const have = new Set(F.items.map((it) => it.rid));
+    state.runs.forEach((r) => { if (!have.has(r.id)) F.items.push({ rid: r.id, on: true, label: '', w: null }); });
+  }
+  // a saved run is recomputed from its stored inputs, so every figure gets the full result (both selectivity bases)
+  const resCache = new WeakMap();
+  function runRes(r) {
+    if (!r) return null;
+    if (!resCache.has(r)) {
+      let out = null;
+      try { const pp = T.parsePaste(r.paste); out = pp.peaks.length ? T.calc(r, pp.peaks, T.assign(pp.peaks, r.method, r.ov || {})) : null; } catch (e) { out = null; }
+      resCache.set(r, out);
+    }
+    return resCache.get(r);
+  }
+  const fracOf = (v) => (isNum(v) ? +v / 100 : null);
+  function figRows(F) {
+    syncItems(F);
+    if (!state.runs.length) return R ? [{ it: { w: null }, cond: state.cond, name: TX[F.lang].cur, res: R, frac: fracOf(state.liqC816), fallback: true }] : [];
+    const out = [];
+    F.items.forEach((it) => {
+      if (!it.on) return;
+      const r = state.runs.find((x) => x.id === it.rid), res = runRes(r);
+      if (res) out.push({ it, cond: r.cond || {}, name: it.label && it.label.trim() ? it.label.trim() : r.name, res, frac: fracOf(r.liqC816) });
+    });
+    return out;
+  }
+  function hcUnion(list) {
+    const m = new Map(); list.forEach((r) => r.hc.forEach((x) => { if (!m.has(x.name)) m.set(x.name, x.n); }));
+    return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => a.n - b.n || a.name.localeCompare(b.name));
+  }
+  // default colour of a hydrocarbon follows its carbon number, so CH4 keeps the same colour in every figure
+  function hcDefaults(hcs) {
+    const used = new Set(), out = {};
+    hcs.forEach((h) => { let i = Math.max(0, Math.min(HC_PAL.length - 1, (h.n || 1) - 1)), k = 0; while (used.has(i) && k++ < HC_PAL.length) i = (i + 1) % HC_PAL.length; used.add(i); out[h.name] = HC_PAL[i]; });
+    return out;
+  }
+  function colOf(ck, hcDef) {
+    const u = userCols(); if (u[ck]) return u[ck];
+    if (ck.indexOf('o:') === 0) { const b = ck.slice(2); return b.indexOf('y:') === 0 ? shade(colOf(b.slice(2), hcDef), 0.5) : shade(colOf(b, hcDef), 0.3); }
+    if (ck.indexOf('y:') === 0) return tint(colOf(ck.slice(2), hcDef), 0.5);
+    if (DEF_COL[ck]) return DEF_COL[ck];
+    if (ck.indexOf('sp:') === 0 && hcDef && hcDef[ck.slice(3)]) return hcDef[ck.slice(3)];
+    return '#8a918e';
+  }
+  const restLabOf = (rows, L) => { const s = new Set(rows.map((r) => r.res.restLabel)); return s.size === 1 ? [...s][0] : L.rest; };
+  const metGrp = (k) => (k === 'Xco2' || k === 'Xh2' ? 'conv' : k === 'carbonGas' ? 'other' : k[0] === 'S' ? 'sel' : 'yld');
+  function metricCat(hcs, restLab, L) {
+    const nmax = hcs.length ? Math.max(...hcs.map((h) => h.n)) : 1, c2 = `C2–C${nmax}`, multi2 = hcs.filter((h) => h.n >= 2).length >= 2;
+    const out = [{ key: 'Xco2', label: L.Xco2, ck: 'm:Xco2' }, { key: 'Xh2', label: L.Xh2, ck: 'm:Xh2' }, { key: 'Sco', label: L.Sco, ck: 'sp:CO' }];
+    hcs.forEach((h) => out.push({ key: 'S:' + h.name, label: L.S(chem(h.name)), ck: 'sp:' + h.name }));
+    if (multi2) out.push({ key: 'SC2n', label: L.S(c2), ck: 'm:SC2n' });
+    out.push({ key: 'Srest', label: L.S(restLab), ck: 'sp:rest' }, { key: 'Sc816', label: L.S('C8–C16'), ck: 'sp:c816' }, { key: 'Yco', label: L.Yco, ck: 'y:sp:CO' });
+    hcs.forEach((h) => out.push({ key: 'Y:' + h.name, label: L.Y(chem(h.name)), ck: 'y:sp:' + h.name }));
+    if (multi2) out.push({ key: 'YC2n', label: L.Y(c2), ck: 'y:m:SC2n' });
+    out.push({ key: 'Yrest', label: L.Y(restLab), ck: 'y:sp:rest' }, { key: 'Yc816', label: L.Y('C8–C16'), ck: 'y:sp:c816' }, { key: 'carbonGas', label: L.carbonGas, ck: 'm:carbonGas' });
+    out.forEach((m) => { m.grp = metGrp(m.key); });
+    return out;
+  }
+  function mval(r, key, basis) {
+    const cf = basis === 'cofree';
+    switch (key) {
+      case 'Xco2': return fin(r.Xco2); case 'Xh2': return fin(r.Xh2); case 'Sco': return fin(r.Sco); case 'Yco': return fin(r.Yco);
+      case 'Srest': return fin(cf ? r.Srest : r.SrestTot); case 'Yrest': return fin(r.Yrest);
+      case 'Sc816': return r.Sc816 == null ? null : fin(cf ? r.Sc816 : (r.Yc816 / r.Xco2) * 100);
+      case 'Yc816': return r.Yc816 == null ? null : fin(r.Yc816);
+      case 'carbonGas': return fin(r.carbonGas);
+      case 'SC2n': return fin(r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + (cf ? x.S : x.Stot), 0));
+      case 'YC2n': return fin(r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + x.Y, 0));
+    }
+    const x = r.hc.find((h) => h.name === key.slice(2));
+    if (!x) return null;
+    return key[0] === 'S' ? fin(cf ? x.S : x.Stot) : fin(x.Y);
+  }
+
+  // ---------- specs: what each figure plots (shared by the drawing, the colour pickers and the data export) ----------
+  const ovCk = (mm) => (mm.ck.indexOf('m:') === 0 ? mm.ck : 'o:' + mm.ck);
+  function stackSpec(F) {
+    const L = TX[F.lang], rows = figRows(F), cf = F.basis === 'cofree';
+    const hcs = hcUnion(rows.map((r) => r.res)), hcDef = hcDefaults(hcs), restLab = rows.length ? restLabOf(rows, L) : L.rest;
+    const restS = (r) => (cf ? r.res.Srest : r.res.SrestTot);
+    const segs = [];
+    if (!cf) segs.push({ ck: 'sp:CO', label: 'CO', v: (r) => r.res.Sco });
+    hcs.forEach((h) => segs.push({ ck: 'sp:' + h.name, label: chem(h.name), v: (r) => { const x = r.res.hc.find((q) => q.name === h.name); return x ? (cf ? x.S : x.Stot) : 0; } }));
+    if (F.split816) {
+      segs.push({ ck: 'sp:c816', label: 'C8–C16', v: (r) => (r.frac == null ? 0 : restS(r) * r.frac) });
+      segs.push({ ck: 'sp:restOther', label: L.other(restLab), v: (r) => restS(r) * (r.frac == null ? 1 : 1 - r.frac) });
+    } else segs.push({ ck: 'sp:rest', label: restLab, v: restS });
+    // right-axis overlays: any conversion / selectivity / yield metric, in catalogue order (Xco2, Xh2 first → circle, square as before)
+    const ovCat = metricCat(hcs, restLab, L), on = F.conv || {};
+    const convs = ovCat.filter((mm) => on[mm.key]).map((mm, j) => ({ key: mm.key, grp: mm.grp, shape: SHAPES[j % SHAPES.length], ck: ovCk(mm), label: mm.label, v: (r) => mval(r.res, mm.key, F.basis) }));
+    return { L, rows, segs, convs, ovCat, hcDef, cf };
+  }
+  function metSpec(F) {
+    const L = TX[F.lang], rows = figRows(F);
+    const hcs = hcUnion(rows.map((r) => r.res)), hcDef = hcDefaults(hcs), restLab = rows.length ? restLabOf(rows, L) : L.rest;
+    const cat = metricCat(hcs, restLab, L), sel = new Set(F.metrics || []);
+    const mets = cat.filter((c) => sel.has(c.key));
+    return { L, rows, cat, mets, hcDef, vals: rows.map((r) => mets.map((m) => mval(r.res, m.key, F.basis))) };
+  }
+  function distSrc(F) {
+    const L = TX[F.lang];
+    if (F.distRid && F.distRid !== 'cur') { const r = state.runs.find((x) => x.id === F.distRid), res = runRes(r); if (res) return { res, name: r.name, frac: fracOf(r.liqC816) }; }
+    return R ? { res: R, name: L.cur, frac: fracOf(state.liqC816) } : null;
+  }
+  function distSpec(F) {
+    const L = TX[F.lang], src = distSrc(F), cf = F.basis === 'cofree';
+    if (!src) return { L, src, cats: [], showS: true, showY: false, cf, hcDef: {} };
+    const r = src.res, hcDef = hcDefaults(hcUnion([r])), restS = cf ? r.Srest : r.SrestTot;
+    const showS = F.distVal !== 'Y', showY = F.distVal !== 'S';
+    let cats = [{ ck: 'sp:CO', label: 'CO', S: cf ? null : r.Sco, Y: r.Yco }];
+    r.hc.slice().sort((a, b) => a.n - b.n).forEach((x) => cats.push({ ck: 'sp:' + x.name, label: chem(x.name), S: cf ? x.S : x.Stot, Y: x.Y }));
+    if (F.split816 && src.frac != null) {
+      cats.push({ ck: 'sp:c816', label: 'C8–C16', S: restS * src.frac, Y: r.Yrest * src.frac });
+      cats.push({ ck: 'sp:restOther', label: L.other(r.restLabel), S: restS * (1 - src.frac), Y: r.Yrest * (1 - src.frac) });
+    } else cats.push({ ck: 'sp:rest', label: r.restLabel, S: restS, Y: r.Yrest });
+    cats = cats.filter((c) => (showS && c.S != null) || (showY && c.Y != null));
+    return { L, src, cats, showS, showY, cf, hcDef };
+  }
+  function figDefs(F) {
+    const L = TX[F.lang];
+    if (F.type === 'stack') {
+      const ov = stackSpec(F).convs, gs = [...new Set(ov.map((c) => c.grp))], cf = F.basis === 'cofree';
+      const tg = gs.filter((g) => g !== 'sel');
+      const title = !tg.length ? L.tSel : tg.length === 1 && tg[0] === 'conv' ? L.tStack : L.tStackOv(tg.map((g) => L.tw[g]));
+      const selLab = cf && ov.some((c) => c.grp === 'sel' && c.key !== 'Sco') ? L.selCF : L.sel;
+      const y2 = gs.length === 1 ? (gs[0] === 'conv' ? L.conv : gs[0] === 'yld' ? L.yld : gs[0] === 'sel' ? selLab : L.axJoin([L.gw.other])) : gs.length ? L.axJoin(gs.map((g) => L.gw[g])) : L.conv;
+      return { title, x: '', y: cf ? L.selCF : L.sel, y2 };
+    }
+    if (F.type === 'dist') { const s = distSrc(F); return { title: L.tDist(s ? s.name : L.cur), x: '', y: F.distVal === 'both' ? L.pct : F.distVal === 'Y' ? L.yld : F.basis === 'cofree' ? L.selCF : L.sel, y2: '' }; }
+    const ks = F.metrics || [], grps = new Set(ks.map(metGrp));
+    let y = L.pct;
+    if (grps.size === 1) { const g = [...grps][0]; y = g === 'conv' ? L.conv : g === 'yld' ? L.yld : g === 'sel' ? (F.basis === 'cofree' && ks.some((k) => k !== 'Sco') ? L.selCF : L.sel) : L.pct; }
+    const xv = F.type === 'line' ? F.xVar || 'run' : 'run';
+    return { title: F.type === 'bar' ? L.tBar : L.tLine(xv), x: xv === 'run' ? '' : L[xv], y, y2: '' };
+  }
+  const pick = (v, d) => (v != null && v !== '' ? v : d);
+
+  // ---------- frame: title + legend + plot, white ground ----------
+  function frame(F, opt, defTitle, W, H, g, legend) {
+    opt = opt || {};
+    let title = pick(F.title, defTitle);
+    if (opt.bare) title = opt.prefix || ''; else if (opt.prefix) title = opt.prefix + ' ' + title;
+    const padX = 22, hasTitle = title.trim() !== '';
+    let y = hasTitle ? 62 : 24, leg = '';
+    if (legend && legend.length) {
+      let lx = padX; const maxX = padX + W;
+      legend.forEach((L2) => {
+        const sw = L2.kind === 'line' ? 30 : 13, tw = textW(L2.label, 14);
+        if (lx > padX && lx + sw + 6 + tw > maxX) { lx = padX; y += 22; }
+        if (L2.kind === 'line') {
+          if (!L2.noLine) leg += `<line x1="${lx}" x2="${lx + sw}" y1="${y - 4.5}" y2="${y - 4.5}" stroke="${L2.color}" stroke-width="2"${L2.dash ? ' stroke-dasharray="6 4"' : ''}/>`;
+          leg += marker(L2.shape || 'circle', lx + sw / 2, y - 4.5, 5, L2.color, '#ffffff', 1.4);
+        } else leg += `<rect x="${lx}" y="${y - 11}" width="13" height="13" rx="3" fill="${L2.color}"/>`;
+        leg += `<text x="${lx + sw + 6}" y="${y}" font-family='${SANS}' font-size="14" fill="${C_LAB}">${esc(L2.label)}</text>`;
+        lx += sw + 6 + tw + 22;
+      });
+      y += 14;
+    } else y -= 10;
+    const TW = Math.max(W, hasTitle ? textW(title, 18, true) + 4 : 0) + padX * 2, TH = y + H + 6;
+    const body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` + (hasTitle ? `<text x="${padX}" y="30" font-family='${SANS}' font-size="18" font-weight="600" fill="${C_INK}">${esc(title)}</text>` : '') + leg + `<g transform="translate(${padX} ${y})">${g}</g>`;
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${body}</svg>`, body, w: TW, h: TH };
+  }
+  // horizontal placement of bar groups: centres px[i] measured from the plot's left edge
+  function slotsLayout(slots, minW) {
+    const sum = slots.reduce((a, b) => a + b, 0), plotW = Math.max(minW, sum), px = [];
+    let x = (plotW - sum) / 2; slots.forEach((s) => { px.push(x + s / 2); x += s; });
+    return { plotW, px };
+  }
+  const leftMargin = (lay, px0, base) => Math.max(base, lay.rot ? lay.lw[0] * 0.71 - px0 + 14 : 0);
+
+  // ---------- 1. stacked selectivity + conversion on the right axis ----------
+  function buildStack(F, opt) {
+    const S = stackSpec(F), { L, rows, segs, convs, hcDef } = S, D0 = figDefs(F);
+    if (!rows.length) throw new Error('empty');
+    const bw0 = clampW(F.barW, 34), gap = clampG(F.gap, 30);
+    const ws = rows.map((r) => (r.it.w > 0 ? +r.it.w : bw0)), slots = ws.map((w) => w + gap);
+    const names = rows.map((r) => r.name), lay = catLayout(names, slots), { plotW, px } = slotsLayout(slots, 300);
+    const xl = pick(F.x, D0.x), yl = pick(F.y, D0.y), y2l = pick(F.y2, D0.y2);
+    const m = { l: leftMargin(lay, px[0], 74), r: convs.length ? 78 : 18, t: F.labels === 'value' && convs.length ? 28 : 14, b: lay.h + (xl.trim() ? 36 : 10) };
+    const D = domain([100], F.ymin, isNum(F.ymax) ? F.ymax : 100), sy = scale(D, m.t);
+    const cv = rows.flatMap((r) => convs.map((c) => fin(c.v(r))));
+    const D2 = convs.length ? domain(cv, 0, F.y2max) : null, sy2 = D2 ? scale(D2, m.t) : null;
+    const W = m.l + plotW + m.r, H = m.t + PH + m.b;
+    let g = yTicks(D, sy, m.l, m.l + plotW, 'l');
+    if (D2) g += yTicks(D2, sy2, m.l, m.l + plotW, 'r');
+    // conversion markers per bar; with value labels on, segment labels that would sit under a marker or its label are skipped
+    const cpts = convs.map((c) => rows.map((r, i) => { const v = fin(c.v(r)); return v == null ? null : { x: m.l + px[i], y: sy2(v), v }; }));
+    const blocked = (i, ym) => cpts.some((P2) => P2[i] && ym + 5 > P2[i].y - 26 && ym - 10 < P2[i].y + 8);
+    rows.forEach((r, i) => {
+      const w = ws[i], x0 = m.l + px[i] - w / 2;
+      let acc = 0;
+      segs.forEach((s) => {
+        const v = Math.max(0, +s.v(r) || 0); if (v <= 0) return;
+        const y1 = sy(acc), y2 = sy(acc + v); acc += v;
+        const h = y1 - y2; if (h <= 0.2) return;
+        const fill = colOf(s.ck, hcDef);
+        g += `<rect x="${x0.toFixed(2)}" y="${y2.toFixed(2)}" width="${w}" height="${h.toFixed(2)}" fill="${fill}" stroke="#ffffff" stroke-width="0.8"/>`;
+        if (F.labels === 'value' && h >= 15 && !blocked(i, (y1 + y2) / 2)) { const t = v.toFixed(1); if (textW(t, VAL - 1) <= w - 2) g += tx(x0 + w / 2, (y1 + y2) / 2 + 4.5, t, { a: 'middle', fs: VAL - 1, c: lum(fill) < 0.55 ? '#ffffff' : C_INK }); }
+      });
+    });
+    g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${sy(D.lo)}" y2="${sy(D.lo)}" stroke="${C_AXIS}" stroke-width="1"/>`;
+    convs.forEach((c, j) => {
+      const col = colOf(c.ck, hcDef), pts = cpts[j].filter(Boolean);
+      if (F.convLine !== false && pts.length > 1) g += `<path d="M${pts.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join('L')}" fill="none" stroke="${col}" stroke-width="2"${j % 2 ? ' stroke-dasharray="6 4"' : ''}/>`;
+      pts.forEach((p) => {
+        g += marker(c.shape, p.x, p.y, 5.5, col, '#ffffff', 1.5);
+        if (F.labels === 'value') g += `<text x="${p.x}" y="${p.y - 11}" text-anchor="middle" font-family='${SANS}' font-size="${VAL}" font-weight="600" fill="${col}" stroke="#ffffff" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">${p.v.toFixed(1)}</text>`;
+      });
+    });
+    g += catLabels(names, px.map((x) => m.l + x), m.t + PH, lay);
+    if (xl.trim()) g += tx(m.l + plotW / 2, H - 10, xl, { a: 'middle', fs: LAB });
+    g += yLab(20, m.t + PH / 2, yl, -90);
+    if (D2) g += yLab(W - 16, m.t + PH / 2, y2l, 90);
+    const legend = segs.map((s) => ({ label: s.label, color: colOf(s.ck, hcDef), kind: 'box' }))
+      .concat(convs.map((c, j) => ({ label: c.label, color: colOf(c.ck, hcDef), kind: 'line', shape: c.shape, dash: j % 2 === 1, noLine: F.convLine === false })));
+    return frame(F, opt, D0.title, W, H, g, legend);
+  }
+
+  // ---------- 2. grouped bars: chosen metrics per run ----------
+  function buildBar(F, opt) {
+    const S = metSpec(F), { rows, mets, hcDef, vals } = S, D0 = figDefs(F);
+    if (!rows.length) throw new Error('empty');
+    if (!mets.length) throw new Error('nomet');
+    const bw0 = clampW(F.barW, 22), gap = clampG(F.gap, 30), inner = 2;
+    const ws = rows.map((r) => (r.it.w > 0 ? +r.it.w : bw0));
+    const gw = ws.map((w) => mets.length * w + (mets.length - 1) * inner), slots = gw.map((x) => x + gap);
+    const names = rows.map((r) => r.name), lay = catLayout(names, slots), { plotW, px } = slotsLayout(slots, 300);
+    const xl = pick(F.x, D0.x), yl = pick(F.y, D0.y);
+    let vRot = false, vMax = 0;
+    if (F.labels === 'value') rows.forEach((r, i) => vals[i].forEach((v) => { if (v == null) return; const t = textW(v.toFixed(1), VAL); vMax = Math.max(vMax, t); if (t > ws[i] + inner + 1) vRot = true; }));
+    const m = { l: leftMargin(lay, px[0], 74), r: 18, t: F.labels === 'value' ? (vRot ? vMax + 14 : 26) : 14, b: lay.h + (xl.trim() ? 36 : 10) };
+    const D = domain(vals.flat(), F.ymin, F.ymax), sy = scale(D, m.t), base = Math.max(D.lo, Math.min(D.hi, 0)), yb = sy(base);
+    const W = m.l + plotW + m.r, H = m.t + PH + m.b;
+    let g = yTicks(D, sy, m.l, m.l + plotW, 'l');
+    rows.forEach((r, i) => {
+      const w = ws[i];
+      mets.forEach((mm, j) => {
+        const v = vals[i][j], bx = m.l + px[i] - gw[i] / 2 + j * (w + inner), col = colOf(mm.ck, hcDef);
+        if (v == null) return;
+        const yv = sy(v);
+        if (v >= base) { if (yb - yv > 0.4) g += `<path d="${roundTop(bx, yv, w, yb - yv, Math.min(4, w / 3))}" fill="${col}"/>`; }
+        else g += `<rect x="${bx}" y="${yb}" width="${w}" height="${Math.max(0, yv - yb)}" fill="${col}"/>`;
+        if (F.labels === 'value') {
+          const t = v.toFixed(1), cx = bx + w / 2, ty = v >= base ? yv - 6 : yv + 16;
+          g += vRot ? `<text transform="translate(${cx + VAL * 0.36} ${v >= base ? yv - 6 : yv + 6}) rotate(-90)" text-anchor="${v >= base ? 'start' : 'end'}" font-family='${SANS}' font-size="${VAL}" fill="${C_LAB}">${t}</text>` : tx(cx, ty, t, { a: 'middle', fs: VAL });
+        }
+      });
+    });
+    g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${yb}" y2="${yb}" stroke="${C_AXIS}" stroke-width="1"/>`;
+    g += catLabels(names, px.map((x) => m.l + x), m.t + PH, lay);
+    if (xl.trim()) g += tx(m.l + plotW / 2, H - 10, xl, { a: 'middle', fs: LAB });
+    g += yLab(20, m.t + PH / 2, yl, -90);
+    const legend = mets.length > 1 ? mets.map((mm) => ({ label: mm.label, color: colOf(mm.ck, hcDef), kind: 'box' })) : [];
+    return frame(F, opt, D0.title, W, H, g, legend);
+  }
+
+  // ---------- 3. lines: chosen metrics against run order or a numeric condition ----------
+  function buildLine(F, opt) {
+    const S = metSpec(F), { mets, hcDef } = S, D0 = figDefs(F);
+    if (!S.rows.length) throw new Error('empty');
+    if (!mets.length) throw new Error('nomet');
+    const xv = F.xVar || 'run', numeric = xv !== 'run';
+    let rows = S.rows.map((r, i) => ({ r, v: S.vals[i], x: numeric ? (isNum(r.cond[xv]) ? +r.cond[xv] : null) : i }));
+    if (numeric) rows = rows.filter((p) => p.x != null).sort((a, b) => a.x - b.x);
+    if (!rows.length) throw new Error('nox');
+    const xl = pick(F.x, D0.x), yl = pick(F.y, D0.y);
+    let plotW, sx, lay = null, names = null, xD = null;
+    if (numeric) {
+      plotW = 560;
+      let lo = rows[0].x, hi = rows[rows.length - 1].x; if (hi === lo) { lo -= 1; hi += 1; }
+      const pad = (hi - lo) * 0.06; xD = { lo: lo - pad, hi: hi + pad }; xD.t = nice(xD.lo, xD.hi, 6);
+      sx = (v) => ((v - xD.lo) / (xD.hi - xD.lo)) * plotW;
+    } else {
+      names = rows.map((p) => p.r.name);
+      const slot = Math.max(72, Math.min(180, Math.max(...names.map((n) => textW(n, TICK))) + 18));
+      const slots = names.map(() => slot); lay = catLayout(names, slots);
+      const L2 = slotsLayout(slots, 360); plotW = L2.plotW; sx = (i) => L2.px[i];
+    }
+    const m = { l: lay ? leftMargin(lay, sx(0), 74) : 74, r: 22, t: F.labels === 'value' ? 28 : 16, b: (lay ? lay.h : 30) + (xl.trim() ? 36 : 10) };
+    const D = domain(rows.flatMap((p) => p.v), F.ymin, F.ymax), sy = scale(D, m.t);
+    const W = m.l + plotW + m.r, H = m.t + PH + m.b;
+    let g = yTicks(D, sy, m.l, m.l + plotW, 'l');
+    g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${sy(D.lo)}" y2="${sy(D.lo)}" stroke="${C_AXIS}" stroke-width="1"/>`;
+    if (numeric) xD.t.t.filter((v) => v >= xD.lo - 1e-9 && v <= xD.hi + 1e-9).forEach((v) => { const x = m.l + sx(v); g += `<line x1="${x}" x2="${x}" y1="${m.t + PH}" y2="${m.t + PH + 5}" stroke="${C_AXIS}" stroke-width="1"/>` + tx(x, m.t + PH + 22, tickFmt(v, xD.t.step), { a: 'middle', c: C_TICK }); });
+    else g += catLabels(names, rows.map((_, i) => m.l + sx(i)), m.t + PH, lay);
+    mets.forEach((mm, j) => {
+      const col = colOf(mm.ck, hcDef), shape = SHAPES[j % SHAPES.length];
+      const pts = rows.map((p) => [m.l + sx(p.x), p.v[j]]).filter((q) => q[1] != null).map(([x, v]) => [x, sy(v), v]);
+      if (F.convLine !== false && pts.length > 1) g += `<path d="M${pts.map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join('L')}" fill="none" stroke="${col}" stroke-width="2"/>`;
+      pts.forEach((q) => { g += marker(shape, q[0], q[1], 5.5, col, '#ffffff', 1.5); if (F.labels === 'value') g += tx(q[0], q[1] - 11, q[2].toFixed(1), { a: 'middle', fs: VAL, c: col }); });
+    });
+    if (xl.trim()) g += tx(m.l + plotW / 2, H - 10, xl, { a: 'middle', fs: LAB });
+    g += yLab(20, m.t + PH / 2, yl, -90);
+    const legend = mets.map((mm, j) => ({ label: mm.label, color: colOf(mm.ck, hcDef), kind: 'line', shape: SHAPES[j % SHAPES.length], noLine: F.convLine === false }));
+    return frame(F, opt, D0.title, W, H, g, legend);
+  }
+
+  // ---------- 4. one run: selectivity and/or yield of every product ----------
+  function buildDist(F, opt) {
+    const S = distSpec(F), { cats, showS, showY, hcDef } = S, D0 = figDefs(F);
+    if (!S.src || !cats.length) throw new Error('empty');
+    const both = showS && showY, bw = clampW(F.barW, 40), gap = clampG(F.gap, 30), inner = 2, nb = both ? 2 : 1;
+    const gw = nb * bw + (nb - 1) * inner, slots = cats.map(() => gw + gap);
+    const names = cats.map((c) => c.label), lay = catLayout(names, slots), { plotW, px } = slotsLayout(slots, 300);
+    const xl = pick(F.x, D0.x), yl = pick(F.y, D0.y);
+    const bars = cats.map((c) => [showS ? { v: fin(c.S), col: colOf(c.ck, hcDef) } : null, showY ? { v: fin(c.Y), col: both ? colOf('y:' + c.ck, hcDef) : colOf(c.ck, hcDef) } : null].filter(Boolean));
+    const m = { l: leftMargin(lay, px[0], 74), r: 18, t: F.labels === 'value' ? 26 : 14, b: lay.h + (xl.trim() ? 36 : 10) };
+    const D = domain(bars.flat().map((b) => b.v), F.ymin, F.ymax), sy = scale(D, m.t), base = Math.max(D.lo, Math.min(D.hi, 0)), yb = sy(base);
+    const W = m.l + plotW + m.r, H = m.t + PH + m.b;
+    let g = yTicks(D, sy, m.l, m.l + plotW, 'l');
+    bars.forEach((B, i) => B.forEach((b, j) => {
+      if (b.v == null) return;
+      const bx = m.l + px[i] - gw / 2 + j * (bw + inner), yv = sy(b.v);
+      if (b.v >= base) { if (yb - yv > 0.4) g += `<path d="${roundTop(bx, yv, bw, yb - yv, Math.min(4, bw / 3))}" fill="${b.col}"/>`; }
+      else g += `<rect x="${bx}" y="${yb}" width="${bw}" height="${Math.max(0, yv - yb)}" fill="${b.col}"/>`;
+      if (F.labels === 'value') g += tx(bx + bw / 2, b.v >= base ? yv - 6 : yv + 16, b.v.toFixed(1), { a: 'middle', fs: textW(b.v.toFixed(1), VAL) > bw + 6 ? VAL - 2 : VAL });
+    }));
+    g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${yb}" y2="${yb}" stroke="${C_AXIS}" stroke-width="1"/>`;
+    g += catLabels(names, px.map((x) => m.l + x), m.t + PH, lay);
+    if (xl.trim()) g += tx(m.l + plotW / 2, H - 10, xl, { a: 'middle', fs: LAB });
+    g += yLab(20, m.t + PH / 2, yl, -90);
+    const legend = both ? [{ label: S.L.selW, color: '#3d4542', kind: 'box' }, { label: S.L.yldW, color: tint('#3d4542', 0.5), kind: 'box' }] : [];
+    return frame(F, opt, D0.title, W, H, g, legend);
+  }
+
+  function buildFig(i, opt) {
+    const F = figList()[i]; if (!F) throw new Error('empty');
+    const f = F.type === 'bar' ? buildBar(F, opt) : F.type === 'line' ? buildLine(F, opt) : F.type === 'dist' ? buildDist(F, opt) : buildStack(F, opt);
+    f.base = `TCD_fig${i + 1}_${F.type}${F.title && F.title.trim() ? '_' + safeName(F.title.trim()) : ''}${F.lang === 'en' ? '_en' : ''}`;
+    return f;
+  }
+  function figData(F) {
+    if (F.type === 'stack') {
+      const S = stackSpec(F);
+      return [[S.L.name].concat(S.segs.map((s) => s.label + ' (%)'), S.convs.map((c) => c.label + ' (%)'))]
+        .concat(S.rows.map((r) => [r.name].concat(S.segs.map((s) => rd(s.v(r))), S.convs.map((c) => rd(c.v(r))))));
+    }
+    if (F.type === 'dist') {
+      const S = distSpec(F), head = [S.L.prod];
+      if (S.showS) head.push(S.L.selW + (S.cf ? ', CO-free' : '') + ' (%)'); if (S.showY) head.push(S.L.yldW + ' (%)');
+      return [head].concat(S.cats.map((c) => [c.label].concat(S.showS ? [rd(c.S)] : [], S.showY ? [rd(c.Y)] : [])));
+    }
+    const S = metSpec(F), xv = F.type === 'line' && F.xVar && F.xVar !== 'run' ? F.xVar : null;
+    return [[S.L.name].concat(xv ? [S.L[xv]] : [], S.mets.map((mm) => mm.label + ' (%)'))]
+      .concat(S.rows.map((r, i) => [r.name].concat(xv ? [isNum(r.cond[xv]) ? +r.cond[xv] : ''] : [], S.vals[i].map(rd))));
+  }
+  // colours a figure uses, for its colour pickers
+  function figColorKeys(F) {
+    if (F.type === 'stack') { const S = stackSpec(F); return { hcDef: S.hcDef, keys: S.segs.map((s) => [s.ck, s.label]).concat(S.convs.map((c) => [c.ck, c.label])) }; }
+    if (F.type === 'dist') { const S = distSpec(F); const k = S.cats.map((c) => [c.ck, c.label]); if (S.showS && S.showY) S.cats.forEach((c) => k.push(['y:' + c.ck, `${c.label}（${S.L.yldW}）`])); return { hcDef: S.hcDef, keys: k }; }
+    const S = metSpec(F); return { hcDef: S.hcDef, keys: S.mets.map((mm) => [mm.ck, mm.label]) };
+  }
+
+  // ---------- editor ----------
+  function figName(i) { const F = figList()[i]; const t = F.title && F.title.trim() ? F.title.trim() : (FTYPES.find((x) => x[0] === F.type) || ['', ''])[1]; return `圖 ${i + 1}：${t}`; }
+  function renderFigTabs() {
+    const figs = figList(), i = state.figIdx;
+    $('#figTabs').innerHTML = figs.map((_, k) => `<button type="button" class="tab" role="tab" data-ftab="${k}" aria-selected="${k === i}">${esc(figName(k))}</button>`).join('') +
+      `<span class="tabact">${figs.length < MAXFIG ? '<button type="button" class="linkbtn" id="figAdd">＋ 新增一張</button><button type="button" class="linkbtn" id="figDup">複製這張</button>' : '<span class="muted small">最多 9 張</span>'}${figs.length > 1 ? '<button type="button" class="linkbtn" id="figDel">刪除這張</button>' : ''}</span>`;
+  }
+  const segH = (attr, opts, cur) => `<span class="seg">${opts.map(([k, l]) => `<button type="button" data-${attr}="${k}" aria-pressed="${cur === k}">${l}</button>`).join('')}</span>`;
+  const chipH = (attr, key, label, on, color) => `<button type="button" class="chip" data-${attr}="${esc(key)}" aria-pressed="${on}"><span class="sw" style="background:${color}"></span>${esc(label)}</button>`;
+  function renderFigEditor() {
+    if (!$('#figCard')) return;
+    const F = curFig(); syncItems(F);
+    renderFigTabs();
+    $('#figCtl1').innerHTML = `<div class="field">種類 ${segH('ftype', FTYPES, F.type)}</div><div class="field">標籤語言 ${segH('flang', [['zh', '中文'], ['en', 'English']], F.lang)}</div>`;
+    const basis = `<div class="field">選擇性基準 ${segH('fbasis', [['tot', '含 CO'], ['cofree', '扣除 CO']], F.basis)}<span class="muted small">${F.basis === 'cofree' ? '烴類合計 = 100%（你 Excel 的算法）' : 'CO + 烴類合計 = 100%'}</span></div>`;
+    const split = `<label class="field" for="fSplit"><input type="checkbox" id="fSplit"${F.split816 ? ' checked' : ''}> 差減項拆成 C8–C16 與其他（依液相比例）</label>`;
+    let c2 = '';
+    if (F.type === 'stack') {
+      const S = stackSpec(F);
+      const ovg = (g, l) => { const L2 = S.ovCat.filter((mm) => mm.grp === g); return L2.length ? `<div class="mgroup"><span class="k">${l}</span><span class="chips">${L2.map((mm) => chipH('fconv', mm.key, mm.label, !!(F.conv && F.conv[mm.key]), colOf(ovCk(mm), S.hcDef))).join('')}</span></div>` : ''; };
+      c2 = basis + split + `<div class="mgroups"><div class="mgroup"><span class="k">右軸疊圖</span><span class="muted small" style="padding-top:4px">可複選；點選的指標畫成點線，疊在長條上，用右側的軸</span></div>${ovg('conv', '轉化率')}${ovg('sel', '選擇性')}${ovg('yld', '產率')}${ovg('other', '其他')}</div>` +
+        `<label class="field" for="fConvLine"><input type="checkbox" id="fConvLine"${F.convLine !== false ? ' checked' : ''}> 右軸連線</label>`;
+    } else if (F.type === 'dist') {
+      c2 = `<label class="field" for="fdRid">數據 <select id="fdRid"><option value="cur"${F.distRid === 'cur' || !state.runs.some((r) => r.id === F.distRid) ? ' selected' : ''}>目前計算</option>${state.runs.map((r) => `<option value="${esc(r.id)}"${F.distRid === r.id ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>` +
+        `<div class="field">顯示 ${segH('fdval', [['S', '選擇性'], ['Y', '產率'], ['both', '兩者']], F.distVal)}</div>` + basis + split;
+    } else {
+      const S = metSpec(F), sel = new Set(F.metrics || []);
+      const grp = (g, l) => { const L2 = S.cat.filter((mm) => mm.grp === g); return L2.length ? `<div class="mgroup"><span class="k">${l}</span><span class="chips">${L2.map((mm) => chipH('fmet', mm.key, mm.label, sel.has(mm.key), colOf(mm.ck, S.hcDef))).join('')}</span></div>` : ''; };
+      c2 = `<div class="mgroups">${grp('conv', '轉化率')}${grp('sel', '選擇性')}${grp('yld', '產率')}${grp('other', '其他')}</div>` + basis +
+        (F.type === 'line' ? `<label class="field" for="fxVar">X 軸 <select id="fxVar">${XVARS.map(([k, l]) => `<option value="${k}"${(F.xVar || 'run') === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label><label class="field" for="fConvLine"><input type="checkbox" id="fConvLine"${F.convLine !== false ? ' checked' : ''}> 連線</label>` : '');
+    }
+    $('#figCtl2').innerHTML = c2;
+    const D0 = figDefs(F), barLike = F.type !== 'line', hasR = F.type === 'stack' && stackSpec(F).convs.length > 0;
+    const bw = clampW(F.barW, 30), gp = clampG(F.gap, 30);
+    $('#figCtl3').innerHTML = (barLike ? `<label class="field" for="fBarW">長條寬度 <input type="range" id="fBarW" min="4" max="120" step="1" value="${bw}"> <span class="mono" id="fBarWv">${bw} px</span></label><label class="field" for="fGap">間距 <input type="range" id="fGap" min="0" max="160" step="2" value="${gp}"> <span class="mono" id="fGapv">${gp} px</span></label>` : '') +
+      `<label class="field" for="fYmin">Y 軸 <input type="number" id="fYmin" step="any" value="${esc(F.ymin)}" placeholder="自動" aria-label="Y 軸起點"> – <input type="number" id="fYmax" step="any" value="${esc(F.ymax)}" placeholder="${F.type === 'stack' ? '100' : '自動'}" aria-label="Y 軸終點"></label>` +
+      (hasR ? `<label class="field" for="fY2max">右軸上限 <input type="number" id="fY2max" step="any" value="${esc(F.y2max)}" placeholder="自動"></label>` : '') +
+      `<div class="field">數值標籤 ${segH('flab', [['none', '不顯示'], ['value', '顯示']], F.labels)}</div>`;
+    $('#figCtl4').innerHTML = `<label class="field gt" for="fTitle">標題 <input type="text" id="fTitle" value="${esc(F.title)}" placeholder="${esc(D0.title)}"></label>` +
+      `<label class="field" for="fX">X 軸 <input type="text" id="fX" value="${esc(F.x)}" placeholder="${esc(D0.x || '（不加）')}"></label>` +
+      `<label class="field" for="fY">Y 軸 <input type="text" id="fY" value="${esc(F.y)}" placeholder="${esc(D0.y)}"></label>` +
+      (hasR ? `<label class="field" for="fY2">右 Y 軸 <input type="text" id="fY2" value="${esc(F.y2)}" placeholder="${esc(D0.y2)}"></label>` : '') +
+      `<p class="hint">空白就用灰字的預設文字；標題清成一個空格就不顯示標題。數值標籤、軸範圍、寬度只影響這一張圖。</p>`;
+    // runs included in this figure
+    const showItems = F.type !== 'dist' && state.runs.length > 0;
+    $('#figItemsWrap').hidden = !showItems;
+    if (showItems) {
+      const wcol = F.type !== 'line';
+      $('#figItems').innerHTML = `<thead><tr><th>納入</th><th>順序</th><th>顯示名稱（圖上的 X 軸標籤）</th><th class="r">T</th><th class="r">P</th><th class="r">GHSV</th><th class="r">TOS</th><th class="r">X CO₂</th>${wcol ? '<th>這筆的寬度</th>' : ''}</tr></thead><tbody>${F.items.map((it, k) => {
+        const r = state.runs.find((x) => x.id === it.rid), res = runRes(r), c = r.cond || {};
+        return `<tr${it.on ? '' : ' class="dim"'}><td><input type="checkbox" data-fi="on" data-i="${k}"${it.on ? ' checked' : ''} aria-label="納入 ${esc(r.name)}"></td>
+          <td class="nowrap"><button type="button" class="linkbtn" data-fmv="${k}" data-dir="-1" aria-label="上移"${k === 0 ? ' disabled' : ''}>↑</button> <button type="button" class="linkbtn" data-fmv="${k}" data-dir="1" aria-label="下移"${k === F.items.length - 1 ? ' disabled' : ''}>↓</button></td>
+          <td><input type="text" data-fi="label" data-i="${k}" value="${esc(it.label)}" placeholder="${esc(r.name)}" style="width:220px" aria-label="顯示名稱"></td>
+          <td class="r mono">${esc(c.T ?? '')}</td><td class="r mono">${esc(c.P ?? '')}</td><td class="r mono">${esc(c.GHSV ?? '')}</td><td class="r mono">${esc(c.TOS ?? '')}</td><td class="r mono">${res ? f2(res.Xco2) : '—'}</td>
+          ${wcol ? `<td class="nowrap"><input type="number" data-fi="w" data-i="${k}" min="2" max="200" step="1" value="${it.w ?? ''}" placeholder="${bw}" style="width:64px" aria-label="這筆的長條寬度"> px</td>` : ''}</tr>`;
+      }).join('')}</tbody>`;
+    }
+    renderFigNote(F);
+    const CK = figColorKeys(F), u = userCols(), changed = CK.keys.some(([k]) => u[k]);
+    $('#figColors').innerHTML = `<div class="k"><span>顏色（所有圖共用：CH₄ 在每張圖都是同一個顏色）</span>${changed ? '<button type="button" class="linkbtn" id="figColReset">這張圖用到的顏色恢復預設</button>' : ''}</div>` +
+      CK.keys.map(([k, l]) => `<label class="cpick"><input type="color" data-fcol="${esc(k)}" value="${colOf(k, CK.hcDef)}" aria-label="${esc(l)} 的顏色"><span>${esc(l)}</span>${u[k] ? '<span class="muted small">已改</span>' : ''}</label>`).join('');
+    $('#figDl').innerHTML = `<span class="dl"><button type="button" class="linkbtn" id="figCopy">複製圖的數據</button>${downloads ? ` · 下載這張圖 <button type="button" class="btn" data-fdl="png">PNG</button> <button type="button" class="btn" data-fdl="svg">SVG</button>` : ''}</span>`;
+    updateFigPreview();
+  }
+  function renderFigNote(F) {
+    const notes = [];
+    if (!state.runs.length && R) notes.push('還沒有存任何一筆，先用「目前計算」畫。在上面「已存的數據」按「存成一筆」，就能把多筆畫在同一張圖比較。');
+    if (F.type === 'line' && F.xVar && F.xVar !== 'run') { const rows = figRows(F), miss = rows.filter((r) => !isNum(r.cond[F.xVar])).length; if (miss) notes.push(`${miss} 筆沒有填 ${F.xVar}，沒畫進去（在「反應條件與流量」填好再存，或載入那一筆補上後重新存）。`); }
+    if (F.type === 'stack') { const rows = figRows(F); if (rows.some((r) => (F.basis === 'cofree' ? r.res.Srest : r.res.SrestTot) < 0)) notes.push('有一筆的差減項是負值（氣相量到的碳比轉化的還多），那一筆的堆疊會超過 100%。'); }
+    if (F.type === 'dist' && F.distRid && F.distRid !== 'cur' && !state.runs.some((r) => r.id === F.distRid)) notes.push('原本選的那一筆已經刪除，改畫目前計算。');
+    $('#figNote').textContent = notes.join(' ');
+  }
+  let fpT;
+  function updateFigPreview(delay) {
+    clearTimeout(fpT);
+    fpT = setTimeout(() => {
+      const el = $('#figPrev'); if (!el) return;
+      try { const f = buildFig(state.figIdx); el.innerHTML = f.svg; $('#figSize').textContent = `${Math.round(f.w)} × ${Math.round(f.h)} px（PNG 以 ${pngScale(f.w, f.h).toFixed(1)} 倍輸出）`; }
+      catch (e) {
+        if (!['empty', 'nomet', 'nox'].includes(e.message)) console.error(e);
+        el.innerHTML = `<div class="empty">${e.message === 'nomet' ? '至少選一個指標' : e.message === 'nox' ? '納入的數據都沒有這個 X 軸變數的值' : '沒有可以畫的數據：先貼上 GC-TCD 數據，或存幾筆再畫'}</div>`;
+        $('#figSize').textContent = '';
+      }
+      updateGridPreview(120);
+    }, delay || 0);
+  }
+  function svgToPng(svgStr, w, h, sc) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error('png'))), 'image/png');
+      };
+      img.onerror = () => reject(new Error('svg'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+    });
+  }
+  async function saveSvgOrPng(f, fmt) {
+    if (!downloads) return;
+    let data, filename;
+    if (fmt === 'svg') { data = new Blob([f.svg], { type: 'image/svg+xml' }); filename = f.base + '.svg'; }
+    else { try { data = await svgToPng(f.svg, f.w, f.h, pngScale(f.w, f.h)); } catch (e) { toast('PNG 轉換失敗，請改用 SVG'); return; } filename = f.base + '.png'; }
+    try { await downloads.save({ filename, data }); toast('已下載 ' + filename); }
+    catch (err) { if (err && err.code === 'declined') return; toast(err && err.code === 'rate_limited' ? '已有一個下載確認視窗，請先處理' : '這個檢視無法下載檔案'); }
+  }
+
+  // ---------- m × n grid ----------
+  const GLABELS = { none: () => '', paren: (i) => `(${String.fromCharCode(97 + i)})`, lower: (i) => `${String.fromCharCode(97 + i)})`, upper: (i) => String.fromCharCode(65 + i) };
+  function gridSt() {
+    if (!state.fgrid || !Array.isArray(state.fgrid.cells)) state.fgrid = { m: 1, n: 2, cells: ['f:0', 'f:1'], label: 'paren', keep: true, title: '' };
+    const G = state.fgrid, nf = figList().length;
+    G.m = Math.max(1, Math.min(4, G.m | 0 || 1)); G.n = Math.max(1, Math.min(4, G.n | 0 || 1));
+    while (G.cells.length < G.m * G.n) G.cells.push('');
+    G.cells.length = G.m * G.n;
+    G.cells = G.cells.map((c) => (c && c.indexOf('f:') === 0 && +c.slice(2) < nf ? c : ''));
+    return G;
+  }
+  function resizeGrid(m, n) {
+    const G = gridSt(), old = G.cells, on = G.n, om = G.m, cells = [];
+    for (let r = 0; r < m; r++) for (let c = 0; c < n; c++) cells.push(r < om && c < on ? old[r * on + c] : '');
+    G.m = m; G.n = n; G.cells = cells;
+  }
+  function buildGrid() {
+    const G = gridSt(), figs = []; let li = 0;
+    G.cells.forEach((c) => {
+      if (!c) { figs.push(null); return; }
+      try { figs.push(buildFig(+c.slice(2), { prefix: (GLABELS[G.label] || GLABELS.none)(li), bare: !G.keep })); li++; } catch (e) { figs.push(null); }
+    });
+    if (!figs.some(Boolean)) throw new Error('empty');
+    const gap = 16, pad = 18, titleH = G.title.trim() ? 46 : 0;
+    const rowH = []; for (let r = 0; r < G.m; r++) rowH[r] = Math.max(0, ...figs.filter((f, i) => f && Math.floor(i / G.n) === r).map((f) => f.h));
+    const colW = []; for (let c = 0; c < G.n; c++) colW[c] = Math.max(0, ...figs.filter((f, i) => f && i % G.n === c).map((f) => f.w));
+    // columns as wide as their widest figure; each figure is centred in its cell
+    const cols = colW.map((w) => w > 0), first = cols.indexOf(true), last = cols.lastIndexOf(true);
+    const xs = []; let ax = pad; for (let c = first; c <= last; c++) { xs[c] = ax; ax += colW[c] + (colW[c] > 0 ? gap : 0); }
+    const ys = []; let ay = pad + titleH; rowH.forEach((h, r) => { ys[r] = ay; if (h > 0) ay += h + gap; });
+    const TW = ax - gap + pad, TH = ay - gap + pad;
+    let body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>`;
+    if (titleH) body += `<text x="${TW / 2}" y="${pad + 26}" text-anchor="middle" font-family='${SANS}' font-size="24" font-weight="600" fill="${C_INK}">${esc(G.title.trim())}</text>`;
+    figs.forEach((f, i) => { if (!f) return; const c = i % G.n, r = Math.floor(i / G.n); body += `<g transform="translate(${xs[c] + (colW[c] - f.w) / 2} ${ys[r]})">${f.body}</g>`; });
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${body}</svg>`, w: TW, h: TH, base: `TCD_grid_${G.m}x${G.n}` };
+  }
+  function renderGridEditor() {
+    if (!$('#gridCard')) return;
+    const G = gridSt(), nf = figList().length;
+    $('#gridCtl').innerHTML = `<label class="field" for="gm">列 m <input type="number" id="gm" min="1" max="4" step="1" value="${G.m}"></label><span class="muted">×</span>
+      <label class="field" for="gn">欄 n <input type="number" id="gn" min="1" max="4" step="1" value="${G.n}"></label>
+      <label class="field" for="glabel">子圖標號 <select id="glabel">${[['paren', '(a) (b) (c)'], ['lower', 'a) b) c)'], ['upper', 'A B C'], ['none', '不加']].map(([k, l]) => `<option value="${k}"${G.label === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field" for="gkeep"><input type="checkbox" id="gkeep"${G.keep ? ' checked' : ''}> 小圖保留標題</label>
+      <label class="field gt" for="gtitle">總標題 <input type="text" id="gtitle" value="${esc(G.title)}" placeholder="（不加）"></label>`;
+    const pre = [[`all`, `全部 ${nf} 張`]]; if (nf >= 2) pre.push(['row', `一排 ${Math.min(4, nf)} 張`]);
+    $('#gridPresets').innerHTML = `<span class="muted small">快速排版：</span>${pre.map(([k, l]) => `<button type="button" class="chip" data-gpreset="${k}">${l}</button>`).join('')}`;
+    const g = $('#gridCells');
+    g.style.gridTemplateColumns = `repeat(${G.n}, minmax(120px, 1fr))`;
+    g.innerHTML = G.cells.map((c, i) => `<div class="gcell"><div class="gpos">第 ${Math.floor(i / G.n) + 1} 列 · 第 ${(i % G.n) + 1} 欄</div><select data-gc="${i}" aria-label="第 ${i + 1} 格的圖"><option value="">（空白）</option>${figList().map((_, k) => `<option value="f:${k}"${c === 'f:' + k ? ' selected' : ''}>${esc(figName(k))}</option>`).join('')}</select></div>`).join('');
+    $('#gridDl').innerHTML = downloads ? `<span class="dl">下載組圖 <button type="button" class="btn" data-gdl="png">PNG</button> <button type="button" class="btn" data-gdl="svg">SVG</button></span>` : '<span class="muted small">這個檢視無法下載檔案</span>';
+    updateGridPreview();
+  }
+  let gpT;
+  function updateGridPreview(delay) {
+    clearTimeout(gpT);
+    gpT = setTimeout(() => {
+      const el = $('#gridPrev'); if (!el) return;
+      try { const f = buildGrid(); el.innerHTML = f.svg; $('#gridSize').textContent = `${Math.round(f.w)} × ${Math.round(f.h)} px（PNG 以 ${pngScale(f.w, f.h).toFixed(1)} 倍輸出）`; }
+      catch (e) { el.innerHTML = '<div class="empty">每一格都是空白，先選圖</div>'; $('#gridSize').textContent = ''; }
+    }, delay || 0);
+  }
+
+  // ---------- figure events (called first by the page's input / change / click listeners) ----------
+  function refreshFig() {
+    const fk = focusKey();
+    renderFigEditor(); renderGridEditor(); save();
+    if (fk) { const el = document.querySelector(fk); if (el && el !== document.activeElement) el.focus({ preventScroll: true }); }
+  }
+  const inFig = (t) => t && t.closest && (t.closest('#figCard') || t.closest('#gridCard'));
+  function figInput(t) {
+    if (!inFig(t)) return false;
+    const F = curFig(), key = t.id || (t.dataset.fi ? 'fi' + t.dataset.fi + t.dataset.i : t.dataset.fcol ? 'col' + t.dataset.fcol : null);
+    switch (t.id) {
+      case 'fBarW': F.barW = +t.value; $('#fBarWv').textContent = t.value + ' px'; break;
+      case 'fGap': F.gap = +t.value; $('#fGapv').textContent = t.value + ' px'; break;
+      case 'fYmin': F.ymin = t.value; break;
+      case 'fYmax': F.ymax = t.value; break;
+      case 'fY2max': F.y2max = t.value; break;
+      case 'fTitle': F.title = t.value; renderFigTabs(); break;
+      case 'fX': F.x = t.value; break;
+      case 'fY': F.y = t.value; break;
+      case 'fY2': F.y2 = t.value; break;
+      case 'gtitle': gridSt().title = t.value; updateGridPreview(60); save(key); return true;
+      default:
+        if (t.dataset.fi === 'label') F.items[+t.dataset.i].label = t.value;
+        else if (t.dataset.fi === 'w') { const v = parseFloat(t.value); F.items[+t.dataset.i].w = isFinite(v) && v > 0 ? v : null; }
+        else if (t.dataset.fcol) userCols()[t.dataset.fcol] = t.value;
+        else return true; // checkboxes and selects are handled on change
+    }
+    updateFigPreview(60); save(key); return true;
+  }
+  function figChange(t) {
+    if (!inFig(t)) return false;
+    const F = curFig(), G = gridSt();
+    if (t.id === 'fSplit') F.split816 = t.checked;
+    else if (t.id === 'fConvLine') F.convLine = t.checked;
+    else if (t.id === 'fxVar') F.xVar = t.value;
+    else if (t.id === 'fdRid') F.distRid = t.value;
+    else if (t.dataset.fi === 'on') F.items[+t.dataset.i].on = t.checked;
+    else if (t.dataset.fcol) userCols()[t.dataset.fcol] = t.value;
+    else if (t.id === 'gm' || t.id === 'gn') resizeGrid(Math.max(1, Math.min(4, +$('#gm').value | 0 || 1)), Math.max(1, Math.min(4, +$('#gn').value | 0 || 1)));
+    else if (t.id === 'glabel') G.label = t.value;
+    else if (t.id === 'gkeep') G.keep = t.checked;
+    else if (t.dataset.gc != null) G.cells[+t.dataset.gc] = t.value;
+    else return true; // text fields were already applied while typing
+    refreshFig(); return true;
+  }
+  function figClick(t) {
+    if (!inFig(t)) return false;
+    const figs = figList(), F = curFig();
+    let b;
+    if ((b = t.closest('[data-ftab]'))) { state.figIdx = +b.dataset.ftab; refreshFig(); return true; }
+    if (t.id === 'figAdd' || t.id === 'figDup') {
+      if (figs.length >= MAXFIG) return true;
+      const nf = t.id === 'figDup' ? JSON.parse(JSON.stringify(F)) : Object.assign(figNew(F.type === 'stack' ? 'line' : 'stack'), { lang: F.lang });
+      figs.push(nf); state.figIdx = figs.length - 1;
+      const G = gridSt(), empty = G.cells.indexOf(''); if (empty >= 0) G.cells[empty] = 'f:' + state.figIdx;
+      refreshFig(); return true;
+    }
+    if (t.id === 'figDel') {
+      const i = state.figIdx; figs.splice(i, 1);
+      const G = state.fgrid; if (G && Array.isArray(G.cells)) G.cells = G.cells.map((c) => { if (!c) return c; const k = +c.slice(2); return k === i ? '' : k > i ? 'f:' + (k - 1) : c; });
+      state.figIdx = Math.max(0, Math.min(i, figs.length - 1)); refreshFig();
+      toast(`已刪除圖 ${i + 1}`, { label: '上一步', fn: () => step(-1) }); return true;
+    }
+    if ((b = t.closest('[data-ftype]'))) { F.type = b.dataset.ftype; if ((F.type === 'bar' || F.type === 'line') && !(F.metrics && F.metrics.length)) F.metrics = ['Xco2', 'Xh2']; refreshFig(); return true; }
+    if ((b = t.closest('[data-flang]'))) { F.lang = b.dataset.flang; refreshFig(); return true; }
+    if ((b = t.closest('[data-fbasis]'))) { F.basis = b.dataset.fbasis; refreshFig(); return true; }
+    if ((b = t.closest('[data-flab]'))) { F.labels = b.dataset.flab; refreshFig(); return true; }
+    if ((b = t.closest('[data-fdval]'))) { F.distVal = b.dataset.fdval; refreshFig(); return true; }
+    if ((b = t.closest('[data-fconv]'))) { const k = b.dataset.fconv; F.conv = Object.assign({}, F.conv, { [k]: !(F.conv && F.conv[k]) }); refreshFig(); return true; }
+    if ((b = t.closest('[data-fmet]'))) { const k = b.dataset.fmet, s = new Set(F.metrics || []); if (s.has(k)) s.delete(k); else s.add(k); F.metrics = [...s]; refreshFig(); return true; }
+    if ((b = t.closest('[data-fmv]'))) { const i = +b.dataset.fmv, j = i + +b.dataset.dir; if (j >= 0 && j < F.items.length) { const x = F.items[i]; F.items[i] = F.items[j]; F.items[j] = x; } refreshFig(); return true; }
+    if (t.id === 'figColReset') { const u = userCols(); figColorKeys(F).keys.forEach(([k]) => delete u[k]); refreshFig(); return true; }
+    if (t.id === 'figCopy') { let aoa; try { aoa = figData(F); } catch (e) { aoa = null; } if (!aoa || aoa.length < 2) { toast('這張圖沒有數據'); return true; } copyText(aoa.map((r) => r.join('\t')).join('\n'), '已複製圖的數據，可直接貼到 Excel'); return true; }
+    if ((b = t.closest('[data-fdl]'))) { let f; try { f = buildFig(state.figIdx); } catch (e) { toast('這張圖沒有數據'); return true; } saveSvgOrPng(f, b.dataset.fdl); return true; }
+    if ((b = t.closest('[data-gpreset]'))) {
+      const G = gridSt(), nf = figs.length;
+      if (b.dataset.gpreset === 'row') { G.m = 1; G.n = Math.min(4, nf); G.cells = Array.from({ length: G.n }, (_, k) => 'f:' + k); }
+      else { G.n = nf <= 3 ? nf : nf === 4 ? 2 : 3; G.m = Math.min(4, Math.ceil(nf / G.n)); G.cells = Array.from({ length: G.m * G.n }, (_, k) => (k < nf ? 'f:' + k : '')); }
+      refreshFig(); return true;
+    }
+    if ((b = t.closest('[data-gdl]'))) { let f; try { f = buildGrid(); } catch (e) { toast('每一格都是空白，先選圖'); return true; } saveSvgOrPng(f, b.dataset.gdl); return true; }
+    return false;
+  }
+
+
+  renderAll(true);
+  window.__tcd = { get R() { return R; }, get state() { return state; }, buildFig: (i, o) => buildFig(i, o), buildGrid: () => buildGrid(), figData: (i) => figData(figList()[i]) };
+})();
+</script>
+
+</body></html>

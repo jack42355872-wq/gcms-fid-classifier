@@ -682,7 +682,8 @@ td.nowrap { white-space: nowrap; }
       Xco2: 'CO₂ 轉化率', Xh2: 'H₂ 轉化率', Sco: 'CO 選擇性', Yco: 'CO 產率', S: (n) => `${n} 選擇性`, Y: (n) => `${n} 產率`, carbonGas: '氣相碳回收', other: (l) => `其他 ${l}`, rest: '差減項',
       conv: '轉化率 (%)', sel: '選擇性 (%)', selCF: '選擇性，扣除 CO (%)', yld: '產率 (%)', pct: '(%)',
       T: '溫度 (°C)', P: '壓力 (bar)', GHSV: 'GHSV (mL g⁻¹ h⁻¹)', TOS: '反應時間 (h)',
-      tStack: '產物選擇性與轉化率', tSel: '產物選擇性', tBar: '各筆數據比較', tDist: (n) => `${n} 產物分布`,
+      tStack: '產物選擇性與轉化率', tSel: '產物選擇性', tStackOv: (w) => `產物選擇性與${w.join('、')}`,
+      gw: { conv: '轉化率', sel: '選擇性', yld: '產率', other: '氣相碳回收' }, tw: { conv: '轉化率', yld: '產率', other: '氣相碳回收' }, axJoin: (w) => `${w.join(' / ')} (%)`, tBar: '各筆數據比較', tDist: (n) => `${n} 產物分布`,
       tLine: (x) => (x === 'run' ? '各筆數據趨勢' : `${{ T: '溫度', P: '壓力', GHSV: 'GHSV', TOS: '反應時間' }[x]}的影響`),
       cur: '目前計算', selW: '選擇性', yldW: '產率', name: '名稱', prod: '產物',
     },
@@ -690,12 +691,13 @@ td.nowrap { white-space: nowrap; }
       Xco2: 'CO₂ conversion', Xh2: 'H₂ conversion', Sco: 'CO selectivity', Yco: 'CO yield', S: (n) => `${n} selectivity`, Y: (n) => `${n} yield`, carbonGas: 'Gas-phase carbon recovery', other: (l) => `Other ${l}`, rest: 'Rest (by difference)',
       conv: 'Conversion (%)', sel: 'Selectivity (%)', selCF: 'Selectivity, CO-free (%)', yld: 'Yield (%)', pct: '(%)',
       T: 'Temperature (°C)', P: 'Pressure (bar)', GHSV: 'GHSV (mL g⁻¹ h⁻¹)', TOS: 'Time on stream (h)',
-      tStack: 'Product selectivity and conversion', tSel: 'Product selectivity', tBar: 'Comparison', tDist: (n) => `${n}: product distribution`,
+      tStack: 'Product selectivity and conversion', tSel: 'Product selectivity', tStackOv: (w) => `Product selectivity${w.length > 1 ? ', ' + w.slice(0, -1).join(', ') + ' and ' : ' and '}${w[w.length - 1]}`,
+      gw: { conv: 'Conversion', sel: 'Selectivity', yld: 'Yield', other: 'Carbon recovery' }, tw: { conv: 'conversion', yld: 'yield', other: 'carbon recovery' }, axJoin: (w) => `${w.join(' / ')} (%)`, tBar: 'Comparison', tDist: (n) => `${n}: product distribution`,
       tLine: (x) => (x === 'run' ? 'Trends' : `Effect of ${{ T: 'temperature', P: 'pressure', GHSV: 'GHSV', TOS: 'time on stream' }[x]}`),
       cur: 'Current', selW: 'Selectivity', yldW: 'Yield', name: 'Run', prod: 'Product',
     },
   };
-  const FTYPES = [['stack', '堆疊＋轉化率'], ['bar', '分組長條'], ['line', '折線'], ['dist', '單筆分布']];
+  const FTYPES = [['stack', '堆疊＋右軸疊圖'], ['bar', '分組長條'], ['line', '折線'], ['dist', '單筆分布']];
   const XVARS = [['run', '依順序（顯示名稱）'], ['T', '溫度 T'], ['P', '壓力 P'], ['GHSV', 'GHSV'], ['TOS', '反應時間 TOS']];
 
   // ---------- small drawing helpers ----------
@@ -730,6 +732,11 @@ td.nowrap { white-space: nowrap; }
     const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return hex;
     const n = parseInt(m[1], 16);
     return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * a).toString(16).padStart(2, '0')).join('');
+  }
+  function shade(hex, a) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v * (1 - a)).toString(16).padStart(2, '0')).join('');
   }
   function lum(hex) { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return 1; const n = parseInt(m[1], 16); return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; }
   // y range: from 0 (or the lowest negative value) to a little above the largest, rounded to nice ticks; fixed ends win
@@ -819,6 +826,7 @@ td.nowrap { white-space: nowrap; }
   }
   function colOf(ck, hcDef) {
     const u = userCols(); if (u[ck]) return u[ck];
+    if (ck.indexOf('o:') === 0) { const b = ck.slice(2); return b.indexOf('y:') === 0 ? shade(colOf(b.slice(2), hcDef), 0.5) : shade(colOf(b, hcDef), 0.3); }
     if (ck.indexOf('y:') === 0) return tint(colOf(ck.slice(2), hcDef), 0.5);
     if (DEF_COL[ck]) return DEF_COL[ck];
     if (ck.indexOf('sp:') === 0 && hcDef && hcDef[ck.slice(3)]) return hcDef[ck.slice(3)];
@@ -855,6 +863,7 @@ td.nowrap { white-space: nowrap; }
   }
 
   // ---------- specs: what each figure plots (shared by the drawing, the colour pickers and the data export) ----------
+  const ovCk = (mm) => (mm.ck.indexOf('m:') === 0 ? mm.ck : 'o:' + mm.ck);
   function stackSpec(F) {
     const L = TX[F.lang], rows = figRows(F), cf = F.basis === 'cofree';
     const hcs = hcUnion(rows.map((r) => r.res)), hcDef = hcDefaults(hcs), restLab = rows.length ? restLabOf(rows, L) : L.rest;
@@ -866,8 +875,10 @@ td.nowrap { white-space: nowrap; }
       segs.push({ ck: 'sp:c816', label: 'C8–C16', v: (r) => (r.frac == null ? 0 : restS(r) * r.frac) });
       segs.push({ ck: 'sp:restOther', label: L.other(restLab), v: (r) => restS(r) * (r.frac == null ? 1 : 1 - r.frac) });
     } else segs.push({ ck: 'sp:rest', label: restLab, v: restS });
-    const convs = [['Xco2', 'circle'], ['Xh2', 'square']].filter(([k]) => F.conv && F.conv[k]).map(([k, shape]) => ({ key: k, shape, ck: 'm:' + k, label: L[k] }));
-    return { L, rows, segs, convs, hcDef, cf };
+    // right-axis overlays: any conversion / selectivity / yield metric, in catalogue order (Xco2, Xh2 first → circle, square as before)
+    const ovCat = metricCat(hcs, restLab, L), on = F.conv || {};
+    const convs = ovCat.filter((mm) => on[mm.key]).map((mm, j) => ({ key: mm.key, grp: mm.grp, shape: SHAPES[j % SHAPES.length], ck: ovCk(mm), label: mm.label, v: (r) => mval(r.res, mm.key, F.basis) }));
+    return { L, rows, segs, convs, ovCat, hcDef, cf };
   }
   function metSpec(F) {
     const L = TX[F.lang], rows = figRows(F);
@@ -897,7 +908,14 @@ td.nowrap { white-space: nowrap; }
   }
   function figDefs(F) {
     const L = TX[F.lang];
-    if (F.type === 'stack') return { title: F.conv && (F.conv.Xco2 || F.conv.Xh2) ? L.tStack : L.tSel, x: '', y: F.basis === 'cofree' ? L.selCF : L.sel, y2: L.conv };
+    if (F.type === 'stack') {
+      const ov = stackSpec(F).convs, gs = [...new Set(ov.map((c) => c.grp))], cf = F.basis === 'cofree';
+      const tg = gs.filter((g) => g !== 'sel');
+      const title = !tg.length ? L.tSel : tg.length === 1 && tg[0] === 'conv' ? L.tStack : L.tStackOv(tg.map((g) => L.tw[g]));
+      const selLab = cf && ov.some((c) => c.grp === 'sel' && c.key !== 'Sco') ? L.selCF : L.sel;
+      const y2 = gs.length === 1 ? (gs[0] === 'conv' ? L.conv : gs[0] === 'yld' ? L.yld : gs[0] === 'sel' ? selLab : L.axJoin([L.gw.other])) : gs.length ? L.axJoin(gs.map((g) => L.gw[g])) : L.conv;
+      return { title, x: '', y: cf ? L.selCF : L.sel, y2 };
+    }
     if (F.type === 'dist') { const s = distSrc(F); return { title: L.tDist(s ? s.name : L.cur), x: '', y: F.distVal === 'both' ? L.pct : F.distVal === 'Y' ? L.yld : F.basis === 'cofree' ? L.selCF : L.sel, y2: '' }; }
     const ks = F.metrics || [], grps = new Set(ks.map(metGrp));
     let y = L.pct;
@@ -950,13 +968,13 @@ td.nowrap { white-space: nowrap; }
     const xl = pick(F.x, D0.x), yl = pick(F.y, D0.y), y2l = pick(F.y2, D0.y2);
     const m = { l: leftMargin(lay, px[0], 74), r: convs.length ? 78 : 18, t: F.labels === 'value' && convs.length ? 28 : 14, b: lay.h + (xl.trim() ? 36 : 10) };
     const D = domain([100], F.ymin, isNum(F.ymax) ? F.ymax : 100), sy = scale(D, m.t);
-    const cv = rows.flatMap((r) => convs.map((c) => fin(r.res[c.key])));
+    const cv = rows.flatMap((r) => convs.map((c) => fin(c.v(r))));
     const D2 = convs.length ? domain(cv, 0, F.y2max) : null, sy2 = D2 ? scale(D2, m.t) : null;
     const W = m.l + plotW + m.r, H = m.t + PH + m.b;
     let g = yTicks(D, sy, m.l, m.l + plotW, 'l');
     if (D2) g += yTicks(D2, sy2, m.l, m.l + plotW, 'r');
     // conversion markers per bar; with value labels on, segment labels that would sit under a marker or its label are skipped
-    const cpts = convs.map((c) => rows.map((r, i) => { const v = fin(r.res[c.key]); return v == null ? null : { x: m.l + px[i], y: sy2(v), v }; }));
+    const cpts = convs.map((c) => rows.map((r, i) => { const v = fin(c.v(r)); return v == null ? null : { x: m.l + px[i], y: sy2(v), v }; }));
     const blocked = (i, ym) => cpts.some((P2) => P2[i] && ym + 5 > P2[i].y - 26 && ym - 10 < P2[i].y + 8);
     rows.forEach((r, i) => {
       const w = ws[i], x0 = m.l + px[i] - w / 2;
@@ -973,7 +991,7 @@ td.nowrap { white-space: nowrap; }
     g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${sy(D.lo)}" y2="${sy(D.lo)}" stroke="${C_AXIS}" stroke-width="1"/>`;
     convs.forEach((c, j) => {
       const col = colOf(c.ck, hcDef), pts = cpts[j].filter(Boolean);
-      if (F.convLine !== false && pts.length > 1) g += `<path d="M${pts.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join('L')}" fill="none" stroke="${col}" stroke-width="2"${j ? ' stroke-dasharray="6 4"' : ''}/>`;
+      if (F.convLine !== false && pts.length > 1) g += `<path d="M${pts.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join('L')}" fill="none" stroke="${col}" stroke-width="2"${j % 2 ? ' stroke-dasharray="6 4"' : ''}/>`;
       pts.forEach((p) => {
         g += marker(c.shape, p.x, p.y, 5.5, col, '#ffffff', 1.5);
         if (F.labels === 'value') g += `<text x="${p.x}" y="${p.y - 11}" text-anchor="middle" font-family='${SANS}' font-size="${VAL}" font-weight="600" fill="${col}" stroke="#ffffff" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">${p.v.toFixed(1)}</text>`;
@@ -984,7 +1002,7 @@ td.nowrap { white-space: nowrap; }
     g += yLab(20, m.t + PH / 2, yl, -90);
     if (D2) g += yLab(W - 16, m.t + PH / 2, y2l, 90);
     const legend = segs.map((s) => ({ label: s.label, color: colOf(s.ck, hcDef), kind: 'box' }))
-      .concat(convs.map((c, j) => ({ label: c.label, color: colOf(c.ck, hcDef), kind: 'line', shape: c.shape, dash: j > 0, noLine: F.convLine === false })));
+      .concat(convs.map((c, j) => ({ label: c.label, color: colOf(c.ck, hcDef), kind: 'line', shape: c.shape, dash: j % 2 === 1, noLine: F.convLine === false })));
     return frame(F, opt, D0.title, W, H, g, legend);
   }
 
@@ -1105,7 +1123,7 @@ td.nowrap { white-space: nowrap; }
     if (F.type === 'stack') {
       const S = stackSpec(F);
       return [[S.L.name].concat(S.segs.map((s) => s.label + ' (%)'), S.convs.map((c) => c.label + ' (%)'))]
-        .concat(S.rows.map((r) => [r.name].concat(S.segs.map((s) => rd(s.v(r))), S.convs.map((c) => rd(r.res[c.key])))));
+        .concat(S.rows.map((r) => [r.name].concat(S.segs.map((s) => rd(s.v(r))), S.convs.map((c) => rd(c.v(r))))));
     }
     if (F.type === 'dist') {
       const S = distSpec(F), head = [S.L.prod];
@@ -1142,8 +1160,9 @@ td.nowrap { white-space: nowrap; }
     let c2 = '';
     if (F.type === 'stack') {
       const S = stackSpec(F);
-      c2 = basis + split + `<div class="field">右軸 <span class="chips">${[['Xco2', 'CO₂ 轉化率'], ['Xh2', 'H₂ 轉化率']].map(([k, l]) => chipH('fconv', k, l, !!(F.conv && F.conv[k]), colOf('m:' + k, S.hcDef))).join('')}</span></div>` +
-        `<label class="field" for="fConvLine"><input type="checkbox" id="fConvLine"${F.convLine !== false ? ' checked' : ''}> 轉化率連線</label>`;
+      const ovg = (g, l) => { const L2 = S.ovCat.filter((mm) => mm.grp === g); return L2.length ? `<div class="mgroup"><span class="k">${l}</span><span class="chips">${L2.map((mm) => chipH('fconv', mm.key, mm.label, !!(F.conv && F.conv[mm.key]), colOf(ovCk(mm), S.hcDef))).join('')}</span></div>` : ''; };
+      c2 = basis + split + `<div class="mgroups"><div class="mgroup"><span class="k">右軸疊圖</span><span class="muted small" style="padding-top:4px">可複選；點選的指標畫成點線，疊在長條上，用右側的軸</span></div>${ovg('conv', '轉化率')}${ovg('sel', '選擇性')}${ovg('yld', '產率')}${ovg('other', '其他')}</div>` +
+        `<label class="field" for="fConvLine"><input type="checkbox" id="fConvLine"${F.convLine !== false ? ' checked' : ''}> 右軸連線</label>`;
     } else if (F.type === 'dist') {
       c2 = `<label class="field" for="fdRid">數據 <select id="fdRid"><option value="cur"${F.distRid === 'cur' || !state.runs.some((r) => r.id === F.distRid) ? ' selected' : ''}>目前計算</option>${state.runs.map((r) => `<option value="${esc(r.id)}"${F.distRid === r.id ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>` +
         `<div class="field">顯示 ${segH('fdval', [['S', '選擇性'], ['Y', '產率'], ['both', '兩者']], F.distVal)}</div>` + basis + split;
@@ -1154,7 +1173,7 @@ td.nowrap { white-space: nowrap; }
         (F.type === 'line' ? `<label class="field" for="fxVar">X 軸 <select id="fxVar">${XVARS.map(([k, l]) => `<option value="${k}"${(F.xVar || 'run') === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label><label class="field" for="fConvLine"><input type="checkbox" id="fConvLine"${F.convLine !== false ? ' checked' : ''}> 連線</label>` : '');
     }
     $('#figCtl2').innerHTML = c2;
-    const D0 = figDefs(F), barLike = F.type !== 'line', hasR = F.type === 'stack' && F.conv && (F.conv.Xco2 || F.conv.Xh2);
+    const D0 = figDefs(F), barLike = F.type !== 'line', hasR = F.type === 'stack' && stackSpec(F).convs.length > 0;
     const bw = clampW(F.barW, 30), gp = clampG(F.gap, 30);
     $('#figCtl3').innerHTML = (barLike ? `<label class="field" for="fBarW">長條寬度 <input type="range" id="fBarW" min="4" max="120" step="1" value="${bw}"> <span class="mono" id="fBarWv">${bw} px</span></label><label class="field" for="fGap">間距 <input type="range" id="fGap" min="0" max="160" step="2" value="${gp}"> <span class="mono" id="fGapv">${gp} px</span></label>` : '') +
       `<label class="field" for="fYmin">Y 軸 <input type="number" id="fYmin" step="any" value="${esc(F.ymin)}" placeholder="自動" aria-label="Y 軸起點"> – <input type="number" id="fYmax" step="any" value="${esc(F.ymax)}" placeholder="${F.type === 'stack' ? '100' : '自動'}" aria-label="Y 軸終點"></label>` +
