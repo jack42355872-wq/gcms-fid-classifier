@@ -118,6 +118,7 @@ html{scroll-behavior:smooth}
       <a href="#s6"><b>6</b><span data-i="n6"></span></a>
       <a href="#s7"><b>7</b><span data-i="n7"></span></a>
       <a href="#s8"><b>8</b><span data-i="n8"></span></a>
+      <a href="#s10"><b>9</b><span data-i="n9"></span></a>
     </nav>
 
     <main>
@@ -149,6 +150,7 @@ html{scroll-behavior:smooth}
       <section class="step" id="s2">
         <h2><span class="no">2</span><span data-i="s2h"></span></h2>
         <p class="lead" data-i="s2lead"></p>
+        <p class="warnbox" id="s2base" hidden></p>
         <div class="how" data-ih="s2how"></div>
         <div class="row"><label class="f" for="s2resp"><span data-i="lblResp"></span><select id="s2resp"></select></label></div>
         <div class="tbl"><table id="tblMain"></table></div>
@@ -199,6 +201,7 @@ html{scroll-behavior:smooth}
       <section class="step" id="s5">
         <h2><span class="no">5</span><span data-i="s5h"></span></h2>
         <p class="lead" data-i="s5lead"></p>
+        <p class="warnbox" id="s5base" hidden></p>
         <div class="how" data-ih="s5how"></div>
         <div class="tbl"><table id="tblWeights"></table></div>
         <div id="s5out"></div>
@@ -261,6 +264,22 @@ html{scroll-behavior:smooth}
         <div id="s8out"></div>
       </section>
 
+      <!-- STEP 9: ITERATION -->
+      <section class="step" id="s10">
+        <h2><span class="no">9</span><span data-i="s10h"></span></h2>
+        <p class="lead" data-i="s10lead"></p>
+        <div class="how" data-ih="s10how"></div>
+        <details id="iterBox" open>
+          <summary data-i="iterPaste"></summary>
+          <textarea id="iterArea" spellcheck="false" style="min-height:110px"></textarea>
+          <div class="row"><button class="primary" id="btnAddRound" data-i="btnAddRound"></button><span id="iterMsg" class="note"></span></div>
+        </details>
+        <h3 style="font-size:1rem;margin:14px 0 4px" data-i="iterRounds"></h3>
+        <div class="tbl"><table id="tblRounds"></table></div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:.9rem;margin:8px 0"><input type="checkbox" id="chkBlock"><span data-i="iterBlock"></span></label>
+        <div id="iterOut"></div>
+      </section>
+
       <section class="step" id="s9">
         <h2><span class="no">↧</span><span data-i="s9h"></span></h2>
         <p class="lead" data-i="s9lead"></p>
@@ -306,7 +325,7 @@ zh: {
   s5how: '<b>為什麼要正規化：</b>CO₂ 轉化率的單位變化是幾十個百分點，CH₄ 產率只有幾個百分點，直接相加會被大的蓋過。所以每個指標先除以自己的最大 Delta，變成同一個尺度。<br><b>公式：</b>N = (水準平均 − 該參數四水準的平均) ÷ 該指標的最大 Delta；總分 = Σ 權重 × 方向 × N（望小的指標方向取 −1）。',
   s6h: '約束最佳化',
   s6lead: '用第 3 步的公式，在範圍內每個網格點都算一次，找出「在某個指標不超過上限的前提下，另一個指標最好」的條件。',
-  s6how: '<b>問題：</b>讓「目標」最好，同時「取捨指標」不能超過 ε。<br><b>Pareto 前緣：</b>把 ε 從嚴到鬆掃一遍，每個 ε 的最佳點連起來就是前緣。前緣上的點都是「沒辦法兩個都更好」的條件。<br><b>轉折點：</b>兩軸各自縮放到 0～1 後，離前緣兩端連線最遠的點。過了這點，目標只能再多一點點，取捨指標卻要犧牲很多。',
+  s6how: '<b>問題：</b>讓「目標」最好，同時「取捨指標」不能超過 ε。<br><b>Pareto 前緣：</b>把 ε 從嚴到鬆掃一遍，每個 ε 的最佳點連起來就是前緣。前緣上的點都是「沒辦法兩個都更好」的條件。<br><b>轉折點：</b>兩軸各自縮放到 0～1 後，離前緣兩端連線最遠的點。過了這點，目標只能再多一點點，取捨指標卻要犧牲很多。<br><b>圖上的實驗點：</b>空心點是各組實驗的模型值。只要實驗條件也在搜尋網格裡，模型值就不可能越過前緣。實心點是實測值，和空心點差一個殘差（細線），所以實測值有可能落在前緣外側；越過的幅度在 2 倍留一 RMSE 以內，都還算誤差範圍。',
   s6obj: '目標', s6goal: '要', optMax: '越大越好', optMin: '越小越好', s6con: '取捨指標', s6limit: '限制', optLe: '不超過 ε（≤）', optGe: '不低於 ε（≥）',
   s6range: '搜尋範圍', s6extra: '其他約束（選填）', btnAddExtra: '新增約束', btnPareto: '計算 Pareto 前緣',
   s6slider: '沿著前緣移動（ε）', btnKnee: '回到轉折點', s6frontSum: '前緣上的代表點',
@@ -352,7 +371,7 @@ zh: {
   ariaExK: '約束指標', ariaExO: '約束方向', ariaExV: '約束值', btnDel: '刪除', noExtra: '沒有其他約束。例如可以加「CO₂ 轉化率 ≥ 60」。',
   pmBad: n => `「${n}」無法建模，請換一個指標。`, pmSame: '目標和取捨指標要選不同的指標。', pmBusy: '計算中…',
   pmDone: (g, f, n, ms) => `完成：${g} 個網格點，可行 ${f} 點，前緣 ${n} 點（${ms} ms）`,
-  plRuns: '實驗條件（模型值）', plFront: 'Pareto 前緣', knee: '轉折點', picked: '目前選的點', hovTrade: '取捨', hovObj: '目標',
+  plRuns: '實驗（模型值）', plMeas: '實驗（實測值）', plFront: 'Pareto 前緣', knee: '轉折點', picked: '目前選的點', hovTrade: '取捨', hovObj: '目標',
   axLeft: '越左越好', axRight: '越右越好', axUp: '越上越好', axDown: '越下越好',
   vsKnee: (o, dO, c, dC) => `和轉折點比：${o} ${dO}，${c} ${dC}。`,
   fixedLbl: n => `固定 ${n}`, cXY: '橫軸和縱軸要選不同的參數。', cNoModel: '這個指標無法建模。', cNoPlotly: '圖表元件沒有載入，請重新整理頁面。',
@@ -369,6 +388,20 @@ zh: {
   s8note: '「差距和模型一致」的標準：實測差距和預測差距相差不超過 2 × √2 × 留一 RMSE（兩個條件各有一份誤差）。只填最佳條件時，改比絕對值（2 × 留一 RMSE）。',
   exData: '# 數據', exModels: '# 模型（二階加成模型）', exOpt: (d, o, c, op) => `# 約束最佳化：${d} ${o}，${c} ${op} ε`, exPick: '選的點',
   pasteOk: (n, m) => `已套用 ${n} 組、${m} 個指標。請到「指標設定」確認方向與是否取對數。`, pasteFail: '無法套用：',
+  n9: '迭代', s10h: '迭代：加入新實驗',
+  s10lead: '把之後做的實驗加進來重新建模。新數據加進模型之前，先用舊模型預測它們，這是最直接的外部驗證。',
+  s10how: '<b>加入方式：</b>每列一組，欄位順序和目前數據相同（編號、4 個參數、各指標），可直接從 Excel 貼上，標題列可有可無。每加入一次算一輪。<br><b>只進入二階模型：</b>主效應（第 2 步）和加權篩選（第 5 步）仍只用 L16 的 16 組，因為新增的實驗不平衡，水準平均會失去公平性。<br><b>事前檢驗：</b>用「這一輪之前」的數據建模，預測這一輪的實驗。差距在 2 倍留一 RMSE 以內算吻合。<br><b>批次差異：</b>新實驗如果換了觸媒批次或重新活化，數值可能整體偏高或偏低。勾選後，模型替每一輪多估一個常數偏移，預測值以 L16 的批次為準。事前檢驗表中的「平均差距」可以用來判斷要不要勾選。',
+  iterPaste: '貼上新一輪的實驗', btnAddRound: '加入為新一輪', iterBlock: '加入批次差異項（每一輪一個常數偏移）', iterRounds: '各輪數據',
+  iterPh: 'A1\t300\t20\t3600\t3.5\t60.12\t5.80\nA2\t320\t20\t3600\t3.5\t62.40\t7.05',
+  thRound: '輪次', thN: '組數', thInclude: '納入模型', excl: '（未納入）', roundName: r => r === 0 ? 'L16（第 0 輪）' : `第 ${r} 輪`,
+  iterOnlyBase: '目前只有 L16 數據。加入新一輪後，這裡會顯示事前檢驗與前後比較。',
+  iterPickRound: '檢驗哪一輪', iterCheckH: r => `事前檢驗：用第 ${r} 輪之前的數據預測第 ${r} 輪`,
+  thCondS: '條件', thPredBefore: '加入前預測', thDiff: '實測 − 預測', thTol: '容許範圍（± 2 × 留一 RMSE）', jFit: '吻合', jMiss: '不吻合',
+  iterSummary: (n, ok, mean, rmse, loo) => `${n} 組中 ${ok} 組吻合。平均差距 ${mean}（整體偏移），這一輪的預測 RMSE ${rmse}，加入前模型的留一 RMSE ${loo}。`,
+  iterCmpH: r => `加入第 ${r} 輪前後的模型比較`, thBefore: '加入前', thAfter: '加入後', thOffset: '批次偏移',
+  iterKneeH: r => `轉折點（第 6 步的設定）：加入第 ${r} 輪前後`, iterKneeNone: '轉折點比較：請在第 6 步計算 Pareto 前緣。',
+  iterAdded: (n, r) => `已加入 ${n} 組為第 ${r} 輪。`, iterErrCols: n => `每列需要 ${n} 個欄位（編號 + 4 個參數 + 各指標）`, iterErrNum: r => `第 ${r} 列有非數字的數值`, iterErrEmpty: '沒有可加入的數據',
+  iterNeedFit: '加入前的數據不足以建模', iterBaseNote: '已加入新實驗。新增的實驗不平衡，這一步只用 L16 的 16 組計算；新實驗只進入二階模型（第 3、6、7 步）。',
   copied: '已複製', copyManual: '請按 Ctrl+C（或 ⌘+C）複製選取的文字', noPlotly: '圖表元件沒有載入，表格與計算仍可使用。'
 },
 en: {
@@ -402,7 +435,7 @@ en: {
   s5how: '<b>Why normalize:</b> CO₂ conversion changes by tens of percentage points while CH₄ yield changes by only a few, so adding them directly lets the larger one dominate. Each response is first divided by its own largest Delta to put all responses on the same scale.<br><b>Formula:</b> N = (level mean − mean of that parameter\'s four levels) ÷ largest Delta of that response; score = Σ weight × direction × N (direction = −1 for smaller-is-better responses).',
   s6h: 'Constrained optimization',
   s6lead: 'Using the formulas from step 3, evaluate every grid point in the search range and find the conditions where one response is best while another stays within a limit.',
-  s6how: '<b>Problem:</b> make the "objective" as good as possible while the "trade-off response" stays within ε.<br><b>Pareto front:</b> sweep ε from strict to loose; joining the best point for each ε gives the front. Every point on the front is a condition where you cannot improve both responses at once.<br><b>Knee point:</b> after scaling both axes to 0–1, the point farthest from the line joining the two ends of the front. Beyond this point the objective gains only a little while the trade-off response gets much worse.',
+  s6how: '<b>Problem:</b> make the "objective" as good as possible while the "trade-off response" stays within ε.<br><b>Pareto front:</b> sweep ε from strict to loose; joining the best point for each ε gives the front. Every point on the front is a condition where you cannot improve both responses at once.<br><b>Knee point:</b> after scaling both axes to 0–1, the point farthest from the line joining the two ends of the front. Beyond this point the objective gains only a little while the trade-off response gets much worse.<br><b>Runs on the plot:</b> hollow points are the model values of the runs. As long as the run conditions are also grid points, a model value can never cross the front. Filled points are the measured values, which differ from the hollow points by the residual (thin line), so a measured value can land beyond the front; crossing by less than 2 × LOO RMSE is still within error.',
   s6obj: 'Objective', s6goal: 'Goal', optMax: 'Maximize', optMin: 'Minimize', s6con: 'Trade-off response', s6limit: 'Limit', optLe: 'At most ε (≤)', optGe: 'At least ε (≥)',
   s6range: 'Search range', s6extra: 'Other constraints (optional)', btnAddExtra: 'Add constraint', btnPareto: 'Compute Pareto front',
   s6slider: 'Move along the front (ε)', btnKnee: 'Back to knee point', s6frontSum: 'Representative points on the front',
@@ -448,7 +481,7 @@ en: {
   ariaExK: 'Constraint response', ariaExO: 'Constraint direction', ariaExV: 'Constraint value', btnDel: 'Delete', noExtra: 'No other constraints. For example, you could add "CO₂ conversion ≥ 60".',
   pmBad: n => `"${n}" cannot be modeled; choose another response.`, pmSame: 'Choose different responses for the objective and the trade-off.', pmBusy: 'Computing…',
   pmDone: (g, f, n, ms) => `Done: ${g} grid points, ${f} feasible, ${n} on the front (${ms} ms)`,
-  plRuns: 'Runs (model values)', plFront: 'Pareto front', knee: 'Knee point', picked: 'Selected point', hovTrade: 'trade-off', hovObj: 'objective',
+  plRuns: 'Runs (model values)', plMeas: 'Runs (measured)', plFront: 'Pareto front', knee: 'Knee point', picked: 'Selected point', hovTrade: 'trade-off', hovObj: 'objective',
   axLeft: 'lower is better', axRight: 'higher is better', axUp: 'higher is better', axDown: 'lower is better',
   vsKnee: (o, dO, c, dC) => `Compared with the knee point: ${o} ${dO}, ${c} ${dC}.`,
   fixedLbl: n => `Fixed ${n}`, cXY: 'Choose different parameters for the X and Y axes.', cNoModel: 'This response cannot be modeled.', cNoPlotly: 'The chart library did not load; please reload the page.',
@@ -465,6 +498,20 @@ en: {
   s8note: 'Criterion for "consistent": the measured difference and the predicted difference differ by no more than 2 × √2 × LOO RMSE (each condition carries its own error). If only the best condition is filled in, the absolute value is compared instead (2 × LOO RMSE).',
   exData: '# Data', exModels: '# Models (additive quadratic)', exOpt: (d, o, c, op) => `# Constrained optimization: ${d} ${o}, ${c} ${op} ε`, exPick: 'Selected point',
   pasteOk: (n, m) => `Applied ${n} runs and ${m} responses. Check the direction and log settings under "Response settings".`, pasteFail: 'Could not apply: ',
+  n9: 'Iteration', s10h: 'Iteration: add new runs',
+  s10lead: 'Add runs done later and refit. Before the new data enter the model, the old model predicts them, which is the most direct external check.',
+  s10how: '<b>How to add:</b> one run per row, in the same column order as the current data (run ID, 4 parameters, each response). You can paste from Excel; a header row is optional. Each addition counts as one round.<br><b>Model only:</b> main effects (step 2) and weighted screening (step 5) still use only the 16 L16 runs, because added runs are unbalanced and level means would no longer be fair.<br><b>Pre-check:</b> build the model from the data before this round and predict the runs in this round. A difference within 2 × LOO RMSE counts as consistent.<br><b>Batch offset:</b> if the new runs used a different catalyst batch or a new activation, all values may shift up or down together. When checked, the model estimates one constant offset per round, and predictions refer to the L16 batch. The "mean difference" in the pre-check helps decide whether to check it.',
+  iterPaste: 'Paste a new round of runs', btnAddRound: 'Add as a new round', iterBlock: 'Add a batch offset (one constant per round)', iterRounds: 'Rounds',
+  iterPh: 'A1\t300\t20\t3600\t3.5\t60.12\t5.80\nA2\t320\t20\t3600\t3.5\t62.40\t7.05',
+  thRound: 'Round', thN: 'Runs', thInclude: 'In model', excl: ' (excluded)', roundName: r => r === 0 ? 'L16 (round 0)' : `Round ${r}`,
+  iterOnlyBase: 'Only the L16 data so far. After you add a round, the pre-check and the before/after comparison appear here.',
+  iterPickRound: 'Round to check', iterCheckH: r => `Pre-check: predicting round ${r} from the data before it`,
+  thCondS: 'Conditions', thPredBefore: 'Predicted (before)', thDiff: 'Measured − predicted', thTol: 'Tolerance (± 2 × LOO RMSE)', jFit: 'Consistent', jMiss: 'Inconsistent',
+  iterSummary: (n, ok, mean, rmse, loo) => `${ok} of ${n} runs consistent. Mean difference ${mean} (overall shift); prediction RMSE for this round ${rmse}; LOO RMSE of the model before adding it ${loo}.`,
+  iterCmpH: r => `Model before vs after adding round ${r}`, thBefore: 'Before', thAfter: 'After', thOffset: 'Batch offset',
+  iterKneeH: r => `Knee point (step-6 settings): before vs after adding round ${r}`, iterKneeNone: 'Knee comparison: compute the Pareto front in step 6.',
+  iterAdded: (n, r) => `Added ${n} runs as round ${r}.`, iterErrCols: n => `Each row needs ${n} columns (run ID + 4 parameters + each response)`, iterErrNum: r => `Row ${r} has a non-numeric value`, iterErrEmpty: 'No rows to add',
+  iterNeedFit: 'Not enough data before this round to fit the model', iterBaseNote: 'New runs have been added. They are unbalanced, so this step uses only the 16 L16 runs; the new runs enter only the quadratic model (steps 3, 6 and 7).',
   copied: 'Copied', copyManual: 'Press Ctrl+C (or ⌘+C) to copy the selected text', noPlotly: 'The chart library did not load; tables and calculations still work.'
 }
 };
@@ -478,6 +525,7 @@ function applyStatic() {
   document.querySelectorAll('[data-ih]').forEach(el => { el.innerHTML = T(el.dataset.ih); });
   document.querySelectorAll('[data-i-aria]').forEach(el => el.setAttribute('aria-label', T(el.dataset.iAria)));
   const ta = document.getElementById('pasteArea'); if (ta) ta.placeholder = T('pastePh');
+  const ti = document.getElementById('iterArea'); if (ti) ti.placeholder = T('iterPh');
   const zh = document.getElementById('langZh'), en = document.getElementById('langEn');
   if (zh) zh.setAttribute('aria-pressed', String(LANG === 'zh'));
   if (en) en.setAttribute('aria-pressed', String(LANG === 'en'));
@@ -510,19 +558,23 @@ const Core = (() => {
     return A.map(r => r.slice(n));
   }
   const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
-  function fitModel(X, y, factors, useLog) {
+  // blocks（選填）：每組的批次編號；0 為基準批次，其餘批次各加一個常數偏移
+  function fitModel(X, y, factors, useLog, blocks) {
     const n = y.length, coding = factorCoding(factors);
     if (y.some(v => !(isFinite(v)))) return { error: '有空白或非數字的數值', code: 'nonnum' };
     if (useLog && y.some(v => v <= 0)) return { error: '取對數時數值必須大於 0', code: 'logpos' };
+    const bl = blocks ? [...new Set(blocks)].filter(v => v !== 0).sort((a, b) => a - b) : [];
+    const p = NB + bl.length;
     const t = useLog ? y.map(Math.log) : y.slice();
-    const A = X.map(x => basis(codeRow(x, coding)));
-    const AtA = Array.from({ length: NB }, (_, i) => Array.from({ length: NB }, (_, j) => A.reduce((s, r) => s + r[i] * r[j], 0)));
-    const inv = invert(AtA);
+    const A = X.map((x, i) => basis(codeRow(x, coding)).concat(bl.map(id => (blocks[i] === id ? 1 : 0))));
+    const AtA = Array.from({ length: p }, (_, i) => Array.from({ length: p }, (_, j) => A.reduce((s, r) => s + r[i] * r[j], 0)));
+    const inv = n > p ? invert(AtA) : null;
     if (!inv) return { error: '數據不足以估計模型（每個參數至少需要 3 個不同水準，且組數至少 10 組）', code: 'singular' };
-    const Aty = Array.from({ length: NB }, (_, i) => A.reduce((s, r, k) => s + r[i] * t[k], 0));
+    const Aty = Array.from({ length: p }, (_, i) => A.reduce((s, r, k) => s + r[i] * t[k], 0));
     const b = inv.map(r => dot(r, Aty));
     const fitT = A.map(r => dot(r, b));
     const h = A.map(r => dot(r, inv.map(row => dot(row, r))));
+    if (h.some(v => v > 1 - 1e-9)) return { error: '有實驗的槓桿值為 1，無法做留一檢驗', code: 'singular' };
     const looT = t.map((v, i) => v - (v - fitT[i]) / (1 - h[i]));
     const back = v => (useLog ? Math.exp(v) : v);
     const fit = fitT.map(back), loo = looT.map(back);
@@ -530,8 +582,10 @@ const Core = (() => {
     const sst = y.reduce((s, v) => s + (v - ybar) ** 2, 0);
     const sse = y.reduce((s, v, i) => s + (v - fit[i]) ** 2, 0);
     const press = y.reduce((s, v, i) => s + (v - loo[i]) ** 2, 0);
+    const s2T = t.reduce((s, v, i) => s + (v - fitT[i]) ** 2, 0) / (n - p);
+    const blockEff = bl.map((id, k) => ({ id, val: b[NB + k], se: Math.sqrt(s2T * inv[NB + k][NB + k]) }));
     return { b, coding, useLog, fit, loo, h, residT: t.map((v, i) => v - fitT[i]), resid: y.map((v, i) => v - fit[i]),
-      R2: 1 - sse / sst, R2pred: 1 - press / sst, rmse: Math.sqrt(sse / n), rmseLoo: Math.sqrt(press / n), n, ybar };
+      R2: 1 - sse / sst, R2pred: 1 - press / sst, rmse: Math.sqrt(sse / n), rmseLoo: Math.sqrt(press / n), n, ybar, blockEff };
   }
   // 單一參數的效應 g_f(x) = b1·u + b2·(u²−5)/4
   function effect(m, j, xj) { const u = (xj - m.coding[j].center) / m.coding[j].half; return m.b[1 + j] * u + m.b[5 + j] * (u * u - 5) / 4; }
@@ -638,6 +692,8 @@ const EXAMPLE = {
 const KEY = 'l16-workbench-v1';
 let S = null;          // 狀態
 let M = [];            // 各指標的模型
+let D = null, B = null; // D：納入模型的實驗；B：L16 基準（第 0 輪）
+let paretoBefore = null;
 let paretoRes = null, pickIdx = 0, pickX = null;
 
 function fromExample() {
@@ -648,7 +704,7 @@ function fromExample() {
     ids: EXAMPLE.runs.map(r => r[0]),
     X: EXAMPLE.runs.map(r => r.slice(1, 5)),
     Y: EXAMPLE.responses.map((_, k) => EXAMPLE.runs.map(r => r[5 + k])),
-    weights: [1, 1, 0, 0, 0],
+    weights: [1, 1, 0, 0, 0], round: EXAMPLE.runs.map(() => 0), roundOn: {}, block: false,
     ranges: null, extra: [], obj: 0, con: 1, objDir: 'max', conOp: 'le',
     s7: { resp: 0, x: 2, y: 1, fixed: null }, val: null
   };
@@ -661,7 +717,18 @@ function localizeNames() {
 }
 function save() { try { __LS.setItem(KEY, JSON.stringify(S)); } catch (e) { /* 無法儲存時照常運作 */ } }
 function load() { try { const t = __LS.getItem(KEY); if (t) { const s = JSON.parse(t); if (s && s.X && s.Y) return s; } } catch (e) { } return null; }
-function levelsOf(j) { return [...new Set(S.X.map(r => r[j]))].sort((a, b) => a - b); }
+function levelsOf(j) { return [...new Set((D || S).X.map(r => r[j]))].sort((a, b) => a - b); }
+const roundOn = r => r === 0 || (S.roundOn || {})[r] !== false;
+function view(keep) {
+  const idx = S.X.map((_, i) => i).filter(keep);
+  return { idx, ids: idx.map(i => S.ids[i]), X: idx.map(i => S.X[i]), Y: S.Y.map(y => idx.map(i => y[i])), round: idx.map(i => S.round[i]) };
+}
+function rounds() { return [...new Set(S.round)].sort((a, b) => a - b); }
+function hasRounds() { return rounds().length > 1; }
+function fitSet(V) {
+  const F = [0, 1, 2, 3].map(j => ({ levels: [...new Set(V.X.map(r => r[j]))].sort((a, b) => a - b) }));
+  return S.responses.map((r, k) => Core.fitModel(V.X, V.Y[k], F, r.log, S.block ? V.round : null));
+}
 function fname(j) { const f = S.factors[j]; return f.unit ? `${f.name} (${f.unit})` : f.name; }
 function rname(k) { const r = S.responses[k]; return r.unit ? `${r.name} (${r.unit})` : r.name; }
 function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
@@ -674,8 +741,11 @@ function errText(m) {
 
 /* ---------- 模型 ---------- */
 function refit() {
-  const F = [0, 1, 2, 3].map(j => ({ levels: levelsOf(j) }));
-  M = S.responses.map((r, k) => Core.fitModel(S.X, S.Y[k], F, r.log));
+  if (!S.round || S.round.length !== S.X.length) S.round = S.X.map(() => 0);
+  if (!S.roundOn) S.roundOn = {};
+  D = view(i => roundOn(S.round[i]));
+  B = view(i => S.round[i] === 0);
+  M = fitSet(D);
 }
 function verdict(m) {
   if (!m || m.error) return `<span class="pill bad">${T('vNo')}</span>`;
@@ -687,7 +757,7 @@ function verdict(m) {
 /* ---------- Step 1 ---------- */
 function renderStatus() {
   const okResp = M.filter(m => m && !m.error && m.R2pred >= 0).length;
-  $('status').innerHTML = `<span class="pill">${T('stRuns', S.X.length)}</span><span class="pill">${T('stResp', S.responses.length)}</span><span class="pill ${okResp ? 'good' : 'bad'}">${T('stOk', okResp)}</span>`
+  $('status').innerHTML = `<span class="pill">${T('stRuns', D.X.length)}</span><span class="pill">${T('stResp', S.responses.length)}</span><span class="pill ${okResp ? 'good' : 'bad'}">${T('stOk', okResp)}</span>`
     + (S.source ? `<span class="pill ex">${T('stEx')}</span>` : '');
   $('dataSource').textContent = S.source ? T('exSource') : T('ownData');
 }
@@ -725,9 +795,10 @@ function renderResponses() {
   });
 }
 function renderData() {
-  let h = `<tr><th>${T('thRun')}</th>` + S.factors.map((_, j) => `<th>${esc(fname(j))}</th>`).join('') + S.responses.map((_, k) => `<th>${esc(rname(k))}</th>`).join('') + '</tr>';
+  const hr = hasRounds();
+  let h = `<tr><th>${T('thRun')}</th>` + (hr ? `<th>${T('thRound')}</th>` : '') + S.factors.map((_, j) => `<th>${esc(fname(j))}</th>`).join('') + S.responses.map((_, k) => `<th>${esc(rname(k))}</th>`).join('') + '</tr>';
   S.ids.forEach((id, i) => {
-    h += `<tr><td>${esc(id)}</td>` + S.X[i].map(v => `<td class="num">${v}</td>`).join('') + S.Y.map(y => `<td class="num">${fmt(y[i], 2)}</td>`).join('') + '</tr>';
+    h += `<tr${roundOn(S.round[i]) ? '' : ' class="muted"'}><td>${esc(id)}</td>` + (hr ? `<td class="num">${S.round[i]}${roundOn(S.round[i]) ? '' : T('excl')}</td>` : '') + S.X[i].map(v => `<td class="num">${v}</td>`).join('') + S.Y.map(y => `<td class="num">${fmt(y[i], 2)}</td>`).join('') + '</tr>';
   });
   $('tblData').innerHTML = h;
 }
@@ -752,7 +823,7 @@ function parsePaste(text) {
   const parseName = s => { const m = s.match(/^(.*?)\s*[\(（]([^\)）]*)[\)）]\s*$/); return m ? { name: m[1], unit: m[2] } : { name: s, unit: '' }; };
   const factors = head.slice(1, 5).map((h, j) => { const p = parseName(h); const lv = [...new Set(X.map(r => r[j]))].sort((a, b) => a - b); const span = lv[lv.length - 1] - lv[0]; return { ...p, step: +(span / 60).toPrecision(2) }; });
   const responses = head.slice(5).map(h => ({ ...parseName(h), dir: 'max', log: false }));
-  return { source: '', factors, responses, ids, X, Y, weights: responses.map((_, k) => (k < 2 ? 1 : 0)), ranges: null, extra: [], obj: 0, con: Math.min(1, responses.length - 1), objDir: 'max', conOp: 'le', s7: { resp: 0, x: 2, y: 1, fixed: null }, val: null };
+  return { source: '', factors, responses, ids, X, Y, round: ids.map(() => 0), roundOn: {}, block: false, weights: responses.map((_, k) => (k < 2 ? 1 : 0)), ranges: null, extra: [], obj: 0, con: Math.min(1, responses.length - 1), objDir: 'max', conOp: 'le', s7: { resp: 0, x: 2, y: 1, fixed: null }, val: null };
 }
 
 /* ---------- Step 2 ---------- */
@@ -762,8 +833,9 @@ function fillSelect(id, cur) {
 let s2k = 0, s3k = 0, s4k = 0;
 function renderS2() {
   fillSelect('s2resp', s2k);
-  const y = S.Y[s2k], dir = S.responses[s2k].dir, col = T('colon');
-  const lms = [0, 1, 2, 3].map(j => Core.levelMeans(S.X, y, j));
+  $('s2base').hidden = !hasRounds(); $('s2base').textContent = T('iterBaseNote');
+  const y = B.Y[s2k], dir = S.responses[s2k].dir, col = T('colon');
+  const lms = [0, 1, 2, 3].map(j => Core.levelMeans(B.X, y, j));
   const nL = Math.max(...lms.map(l => l.length));
   const deltas = lms.map(l => Math.max(...l.map(z => z.mean)) - Math.min(...l.map(z => z.mean)));
   const order = deltas.map((d, j) => j).sort((a, b) => deltas[b] - deltas[a]);
@@ -775,7 +847,7 @@ function renderS2() {
   });
   $('tblMain').innerHTML = h;
   let h2 = `<tr><th>${T('thParam')}</th><th>${T('thLevel')}</th><th>${T('thRunsAvg')}</th><th>${T('thValues')}</th><th>${T('thMean')}</th></tr>`;
-  lms.forEach((l, j) => l.forEach(z => { h2 += `<tr><td>${esc(fname(j))}</td><td class="num">${z.level}</td><td>${z.idx.map(i => esc(S.ids[i])).join(T('sep'))}</td><td class="num">${z.idx.map(i => fmt(y[i], 2)).join(' + ')}</td><td class="num">÷ ${z.idx.length} = ${fmt(z.mean, 3)}</td></tr>`; }));
+  lms.forEach((l, j) => l.forEach(z => { h2 += `<tr><td>${esc(fname(j))}</td><td class="num">${z.level}</td><td>${z.idx.map(i => esc(B.ids[i])).join(T('sep'))}</td><td class="num">${z.idx.map(i => fmt(y[i], 2)).join(' + ')}</td><td class="num">÷ ${z.idx.length} = ${fmt(z.mean, 3)}</td></tr>`; }));
   $('tblMainIdx').innerHTML = h2;
   if (window.Plotly) {
     const muted = css('--muted'), line = css('--line'), acc = css('--accent');
@@ -815,28 +887,28 @@ function renderS3() {
   m.coding.forEach((cj, j) => { cd += `<tr><td>${esc(fname(j))}</td><td class="num">${fmt(cj.center, 3)}</td><td class="num">${fmt(cj.half, 3)}</td><td class="num">${levelsOf(j).map(L => `${L} → ${fmt((L - cj.center) / cj.half, 2)}`).join(T('gap'))}</td></tr>`; });
   $('tblCoding').innerHTML = cd;
   // 手算捷徑
-  const yT = lg ? S.Y[s3k].map(Math.log) : S.Y[s3k];
+  const yT = lg ? D.Y[s3k].map(Math.log) : D.Y[s3k];
   let sc = `<p class="note">${T('shortIntro')}<br>b₁ = (−3·m₁ − m₂ + m₃ + 3·m₄) ÷ 20${T('gap')}${T('gap')}b₂ = (m₁ − m₂ − m₃ + m₄) ÷ 4${lg ? T('shortLog') : ''}</p><div class="calc">`;
   let anyShort = false;
   for (let j = 0; j < 4; j++) {
-    const s = Core.shortcut(S.X, yT, j); if (!s) continue; anyShort = true;
+    const s = Core.shortcut(D.X, yT, j); if (!s) continue; anyShort = true;
     const m4 = s.m.map(v => fmt(v, 4));
     sc += `${esc(fname(j))}${T('colon')}m = ${m4.join(', ')}\n  b₁ = (−3×${m4[0]} − ${m4[1]} + ${m4[2]} + 3×${m4[3]}) ÷ 20 = ${fmt(s.b1, 4)}\n  b₂ = (${m4[0]} − ${m4[1]} − ${m4[2]} + ${m4[3]}) ÷ 4 = ${fmt(s.b2, 4)}\n\n`;
   }
   sc += '</div>';
   $('shortcutBox').innerHTML = anyShort ? sc : `<p class="note">${T('shortNone')}</p>`;
   let rr = `<tr><th>${T('thRun')}</th><th>${T('thMeas')}</th><th>${T('thFit')}</th><th>${T('thResid')}</th><th>${T('thLoo')}</th><th>${T('thH')}</th></tr>`;
-  S.ids.forEach((id, i) => { rr += `<tr><td>${esc(id)}</td><td class="num">${fmt(S.Y[s3k][i], 2)}</td><td class="num">${fmt(m.fit[i], 2)}</td><td class="num">${fmt(m.resid[i], 2)}</td><td class="num">${fmt(m.loo[i], 2)}</td><td class="num">${fmt(m.h[i], 3)}</td></tr>`; });
+  D.ids.forEach((id, i) => { rr += `<tr><td>${esc(id)}</td><td class="num">${fmt(D.Y[s3k][i], 2)}</td><td class="num">${fmt(m.fit[i], 2)}</td><td class="num">${fmt(m.resid[i], 2)}</td><td class="num">${fmt(m.loo[i], 2)}</td><td class="num">${fmt(m.h[i], 3)}</td></tr>`; });
   $('tblRuns').innerHTML = rr;
   if (window.Plotly) {
-    const y = S.Y[s3k], lo = Math.min(...y, ...m.fit, ...m.loo), hi = Math.max(...y, ...m.fit, ...m.loo), pad = (hi - lo) * 0.06;
+    const y = D.Y[s3k], lo = Math.min(...y, ...m.fit, ...m.loo), hi = Math.max(...y, ...m.fit, ...m.loo), pad = (hi - lo) * 0.06;
     const acc = css('--accent'), c2 = css('--c2'), muted = css('--muted'), line = css('--line');
     const seg = { x: [], y: [], mode: 'lines', line: { color: line, width: 1 }, hoverinfo: 'skip', showlegend: false };
     y.forEach((v, i) => { seg.x.push(v, v, null); seg.y.push(m.fit[i], m.loo[i], null); });
     Plotly.react('plotParity', [
       { x: [lo - pad, hi + pad], y: [lo - pad, hi + pad], mode: 'lines', line: { color: muted, dash: 'dash', width: 1 }, hoverinfo: 'skip', showlegend: false }, seg,
-      { x: y, y: m.fit, mode: 'markers', name: T('parFit'), marker: { size: 9, color: 'rgba(0,0,0,0)', line: { color: acc, width: 2 } }, text: S.ids, hovertemplate: `%{text}<br>${T('hovMeas')} %{x:.2f}<br>${T('hovModel')} %{y:.2f}<extra></extra>` },
-      { x: y, y: m.loo, mode: 'markers', name: T('parLoo'), marker: { size: 8, color: c2 }, text: S.ids, hovertemplate: `%{text}<br>${T('hovMeas')} %{x:.2f}<br>${T('hovLoo')} %{y:.2f}<extra></extra>` }],
+      { x: y, y: m.fit, mode: 'markers', name: T('parFit'), marker: { size: 9, color: 'rgba(0,0,0,0)', line: { color: acc, width: 2 } }, text: D.ids, hovertemplate: `%{text}<br>${T('hovMeas')} %{x:.2f}<br>${T('hovModel')} %{y:.2f}<extra></extra>` },
+      { x: y, y: m.loo, mode: 'markers', name: T('parLoo'), marker: { size: 8, color: c2 }, text: D.ids, hovertemplate: `%{text}<br>${T('hovMeas')} %{x:.2f}<br>${T('hovLoo')} %{y:.2f}<extra></extra>` }],
       baseLayout({ height: 320, margin: { l: 50, r: 10, t: 28, b: 46 }, title: { text: T('parTitle', rname(s3k)), font: { size: 13 }, x: 0.02 }, legend: { orientation: 'h', y: -0.22, font: { size: 11 } },
         xaxis: { title: { text: T('axMeas'), font: { size: 11 } }, gridcolor: line, color: muted, zeroline: false, range: [lo - pad, hi + pad] },
         yaxis: { title: { text: T('axModel'), font: { size: 11 } }, gridcolor: line, color: muted, zeroline: false, range: [lo - pad, hi + pad], scaleanchor: 'x' } }), { displayModeBar: false, responsive: true });
@@ -881,7 +953,8 @@ function renderS5() {
   S.responses.forEach((r, k) => $('w' + k).onchange = e => { const v = parseFloat(e.target.value); S.weights[k] = isFinite(v) && v >= 0 ? v : 0; save(); renderS5(); });
   const items = S.responses.map((r, k) => ({ k, w: S.weights[k] || 0, sign: r.dir === 'max' ? 1 : -1 })).filter(it => it.w > 0);
   if (!items.length) { $('s5out').innerHTML = `<div class="warnbox">${T('s5none')}</div>`; return; }
-  const sr = Core.screening(S.X, S.Y, items);
+  $('s5base').hidden = !hasRounds(); $('s5base').textContent = T('iterBaseNote');
+  const sr = Core.screening(B.X, B.Y, items);
   let o = '';
   sr.per.forEach(p => {
     o += `<h3 style="font-size:.95rem;margin:12px 0 2px">${esc(T('s5per', rname(p.k), fmt(p.dmax, 3), p.w, p.sign > 0 ? '+1' : '−1'))}</h3><div class="tbl"><table><tr><th>${T('thParam')}</th>${sr.levels[0].map((_, i) => `<th>${T('thLevelN', i + 1)}</th>`).join('')}</tr>`;
@@ -941,20 +1014,33 @@ function runPareto() {
     if (res.error) { $('paretoMsg').textContent = errText(res); $('s6res').hidden = true; return; }
     res.ms = Math.round(performance.now() - t0);
     paretoRes = res; pickIdx = res.kneeIdx; pickX = res.front[pickIdx].x.slice();
+    paretoBefore = null;
+    const rs = rounds().filter(roundOn);
+    if (rs.length > 1) {
+      const last = rs[rs.length - 1], Mb = fitSet(view(i => S.round[i] < last && roundOn(S.round[i])));
+      if (![S.obj, S.con, ...S.extra.map(e => e.k)].some(k => !Mb[k] || Mb[k].error)) {
+        const rb = Core.pareto(Mb, { k: S.obj, dir: S.objDir }, { k: S.con, op: S.conOp }, S.ranges, S.extra);
+        if (!rb.error) paretoBefore = { last, ...rb.front[rb.kneeIdx] };
+      }
+    }
     $('paretoMsg').textContent = paretoDoneMsg();
     $('s6res').hidden = false;
     $('epsSlider').max = res.front.length - 1; $('epsSlider').value = pickIdx;
     renderParetoPlot(); renderPick(); renderFrontTable();
-    S.s7.fixed = null; renderS7(); s4x = pickX.slice(); renderS4(); renderS8();
+    S.s7.fixed = null; renderS7(); s4x = pickX.slice(); renderS4(); renderS8(); renderIter();
   }, 30);
 }
 function renderParetoPlot() {
   if (!paretoRes || !window.Plotly) return;
   const fr = paretoRes.front, kn = fr[paretoRes.kneeIdx], pk = fr[pickIdx];
   const acc = css('--accent'), ink = css('--ink'), muted = css('--muted'), line = css('--line'), c2 = css('--c2');
-  const runs = { x: S.X.map(x => Core.predict(M[S.con], x)), y: S.X.map(x => Core.predict(M[S.obj], x)), mode: 'markers', name: T('plRuns'), marker: { color: muted, size: 7, opacity: .6 }, text: S.ids, hovertemplate: '%{text}<br>%{x:.2f} / %{y:.2f}<extra></extra>' };
+  const mx = D.X.map(x => Core.predict(M[S.con], x)), my = D.X.map(x => Core.predict(M[S.obj], x));
+  const segs = { x: [], y: [], mode: 'lines', line: { color: line, width: 1 }, hoverinfo: 'skip', showlegend: false };
+  D.X.forEach((_, i) => { segs.x.push(mx[i], D.Y[S.con][i], null); segs.y.push(my[i], D.Y[S.obj][i], null); });
+  const runs = { x: mx, y: my, mode: 'markers', name: T('plRuns'), marker: { color: 'rgba(0,0,0,0)', size: 8, line: { color: muted, width: 1.5 } }, text: D.ids, hovertemplate: `%{text} ${T('hovModel')}<br>%{x:.2f} / %{y:.2f}<extra></extra>` };
+  const meas = { x: D.Y[S.con], y: D.Y[S.obj], mode: 'markers', name: T('plMeas'), marker: { color: ink, size: 6, opacity: .7 }, text: D.ids, hovertemplate: `%{text} ${T('hovMeas')}<br>%{x:.2f} / %{y:.2f}<extra></extra>` };
   const desc = p => p.x.map((v, j) => `${S.factors[j].name} ${v}`).join(' / ');
-  Plotly.react('plotPareto', [runs,
+  Plotly.react('plotPareto', [segs, runs, meas,
     { x: fr.map(p => p.fc), y: fr.map(p => p.fo), mode: 'lines', name: T('plFront'), line: { color: acc, width: 2.5 }, text: fr.map(desc), hovertemplate: `%{text}<br>${T('hovTrade')} %{x:.2f}${T('comma')}${T('hovObj')} %{y:.2f}<extra></extra>` },
     { x: [kn.fc], y: [kn.fo], mode: 'markers', name: T('knee'), marker: { symbol: 'star', size: 18, color: ink }, text: [desc(kn)], hovertemplate: `${T('knee')}<br>%{text}<extra></extra>` },
     { x: [pk.fc], y: [pk.fo], mode: 'markers', name: T('picked'), marker: { symbol: 'circle-open', size: 16, color: c2, line: { width: 3 } }, hoverinfo: 'skip' }],
@@ -996,17 +1082,17 @@ function drawContour() {
   const xs = Array.from({ length: nx }, (_, i) => lvx[0] + (lvx[lvx.length - 1] - lvx[0]) * i / (nx - 1));
   const ys = Array.from({ length: ny }, (_, i) => lvy[0] + (lvy[lvy.length - 1] - lvy[0]) * i / (ny - 1));
   const z = ys.map(yv => xs.map(xv => { const p = st.fixed.slice(); p[st.x] = xv; p[st.y] = yv; return Core.predict(m, p); }));
-  const adj = S.X.map((_, i) => Core.adjustedPoint(m, S.X, i, st.fixed, st.x, st.y));
-  const onSlice = S.X.map(x => [0, 1, 2, 3].every(j => j === st.x || j === st.y || Math.abs(x[j] - st.fixed[j]) < 1e-9));
+  const adj = D.X.map((_, i) => Core.adjustedPoint(m, D.X, i, st.fixed, st.x, st.y));
+  const onSlice = D.X.map(x => [0, 1, 2, 3].every(j => j === st.x || j === st.y || Math.abs(x[j] - st.fixed[j]) < 1e-9));
   const zall = z.flat().concat(adj.map(a => a.value)), zmin = Math.min(...zall), zmax = Math.max(...zall);
   const dark = getComputedStyle(document.documentElement).colorScheme === 'dark';
   const scale = S.responses[st.resp].dir === 'max' ? 'Blues' : 'Oranges';
   const muted = css('--muted'), ink = css('--ink');
   const traces = [
     { type: 'contour', x: xs, y: ys, z, zmin, zmax, colorscale: scale, reversescale: dark, contours: { coloring: 'heatmap', showlabels: true, labelfont: { size: 10, color: ink } }, line: { width: .6, color: 'rgba(0,0,0,.25)' }, colorbar: { title: { text: rname(st.resp), side: 'right', font: { size: 11 } }, thickness: 12, tickfont: { color: muted } }, hovertemplate: `${S.factors[st.x].name} %{x:.3g}<br>${S.factors[st.y].name} %{y:.3g}<br>${T('hovModel')} %{z:.2f}<extra></extra>` },
-    { type: 'scatter', mode: 'markers+text', x: S.X.map(x => x[st.x]), y: S.X.map(x => x[st.y]), text: S.ids, textposition: 'top center', textfont: { size: 10, color: ink },
+    { type: 'scatter', mode: 'markers+text', x: D.X.map(x => x[st.x]), y: D.X.map(x => x[st.y]), text: D.ids, textposition: 'top center', textfont: { size: 10, color: ink },
       marker: { size: onSlice.map(o => o ? 16 : 12), color: adj.map(a => a.value), colorscale: scale, reversescale: dark, cmin: zmin, cmax: zmax, line: { color: ink, width: onSlice.map(o => o ? 3 : 1) } },
-      customdata: adj.map((a, i) => [S.Y[st.resp][i], m.resid[i], a.value]), hovertemplate: `%{text}<br>${T('hovMeas')} %{customdata[0]:.2f}<br>${T('hovResid')} %{customdata[1]:+.2f}<br>${T('hovAdj')} %{customdata[2]:.2f}<extra></extra>`, showlegend: false }];
+      customdata: adj.map((a, i) => [D.Y[st.resp][i], m.resid[i], a.value]), hovertemplate: `%{text}<br>${T('hovMeas')} %{customdata[0]:.2f}<br>${T('hovResid')} %{customdata[1]:+.2f}<br>${T('hovAdj')} %{customdata[2]:.2f}<extra></extra>`, showlegend: false }];
   if (pickX) traces.push({ type: 'scatter', mode: 'markers', x: [pickX[st.x]], y: [pickX[st.y]], marker: { symbol: 'star', size: 18, color: ink }, name: T('s6pt'), hovertemplate: `${T('s6pt')}<extra></extra>`, showlegend: false });
   Plotly.react('plotContour', traces, baseLayout({ height: 440, margin: { l: 60, r: 10, t: 16, b: 50 },
     xaxis: { title: { text: fname(st.x), font: { size: 11 } }, tickvals: lvx, color: muted, zeroline: false, showgrid: false },
@@ -1035,14 +1121,14 @@ function renderSliceFormula() {
 }
 function explainPoint() {
   const st = S.s7, m = M[st.resp]; if (!m || m.error || st.x === st.y) return;
-  const i = s7sel ?? S.X.findIndex(x => [0, 1, 2, 3].some(j => j !== st.x && j !== st.y && Math.abs(x[j] - st.fixed[j]) > 1e-9));
+  const i = s7sel ?? D.X.findIndex(x => [0, 1, 2, 3].some(j => j !== st.x && j !== st.y && Math.abs(x[j] - st.fixed[j]) > 1e-9));
   if (i < 0) { $('s7calc').textContent = ''; return; }
-  const lg = S.responses[st.resp].log, a = Core.adjustedPoint(m, S.X, i, st.fixed, st.x, st.y);
-  const own = Core.breakdown(m, S.X[i]), sl = Core.breakdown(m, a.xs);
+  const lg = S.responses[st.resp].log, a = Core.adjustedPoint(m, D.X, i, st.fixed, st.x, st.y);
+  const own = Core.breakdown(m, D.X[i]), sl = Core.breakdown(m, a.xs);
   const f = v => fmt(v, 4), ln = lg ? T('epLn') : '', col = T('colon');
-  let t = `${T('epHead', S.ids[i])}\n${T('epOwn')}${S.X[i].map((v, j) => `${S.factors[j].name} ${v}`).join(' / ')}\n${T('epSlice')}${a.xs.map((v, j) => `${S.factors[j].name} ${v}`).join(' / ')}\n\n`;
+  let t = `${T('epHead', D.ids[i])}\n${T('epOwn')}${D.X[i].map((v, j) => `${S.factors[j].name} ${v}`).join(' / ')}\n${T('epSlice')}${a.xs.map((v, j) => `${S.factors[j].name} ${v}`).join(' / ')}\n\n`;
   t += `${T('ep1')}${ln}${col}${f(own.b0)} ${own.terms.map(x => sgn(x.g)).join(' ')} = ${f(own.sumT)}\n`;
-  t += `${T('ep2')}${ln} = ${lg ? `ln(${fmt(S.Y[st.resp][i], 2)}) = ${f(Math.log(S.Y[st.resp][i]))}` : fmt(S.Y[st.resp][i], 2)} − ${f(own.sumT)} = ${f(m.residT[i])}\n`;
+  t += `${T('ep2')}${ln} = ${lg ? `ln(${fmt(D.Y[st.resp][i], 2)}) = ${f(Math.log(D.Y[st.resp][i]))}` : fmt(D.Y[st.resp][i], 2)} − ${f(own.sumT)} = ${f(m.residT[i])}\n`;
   t += `${T('ep3')}${ln}${col}${f(sl.b0)} ${sl.terms.map(x => sgn(x.g)).join(' ')} = ${f(sl.sumT)}\n`;
   t += `${T('ep4')} = ${f(sl.sumT)} ${sgn(m.residT[i])} = ${f(sl.sumT + m.residT[i])}${lg ? `   → e^${f(sl.sumT + m.residT[i])} = ${fmt(a.value, 3)}` : ''}\n`;
   t += `\n${T('epOnly', [0, 1, 2, 3].filter(j => j !== st.x && j !== st.y).map(j => S.factors[j].name).join(T('andSep')))}`;
@@ -1052,7 +1138,7 @@ function explainPoint() {
 /* ---------- Step 8 ---------- */
 function screeningBest() {
   const items = S.responses.map((r, k) => ({ k, w: S.weights[k] || 0, sign: r.dir === 'max' ? 1 : -1 })).filter(it => it.w > 0);
-  return items.length ? Core.screening(S.X, S.Y, items).best : [0, 1, 2, 3].map(j => levelsOf(j)[0]);
+  return items.length ? Core.screening(B.X, B.Y, items).best : [0, 1, 2, 3].map(j => levelsOf(j)[0]);
 }
 function renderS8() {
   if (!S.val) S.val = { touched: false, cond: [pickX ? pickX.slice() : [0, 1, 2, 3].map(j => levelsOf(j)[0]), screeningBest()], meas: [S.responses.map(() => ''), S.responses.map(() => '')] };
@@ -1080,11 +1166,91 @@ function renderS8() {
   $('s8out').innerHTML = `<p class="note">${T('s8note')}</p>`;
 }
 
+/* ---------- Step 9：迭代 ---------- */
+let iterR = null, iterK = 0;
+function parseRound(text) {
+  const nCol = 5 + S.responses.length;
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const split = l => (l.includes('\t') ? l.split('\t') : l.split(',')).map(c => c.trim());
+  const out = [];
+  lines.map(split).forEach((r, i) => {
+    if (i === 0 && r.slice(1, 5).some(v => v === '' || !isFinite(Number(v)))) return; // 標題列
+    if (r.length < nCol) throw new Error(T('iterErrCols', nCol));
+    const v = r.slice(1, nCol).map(Number);
+    if (v.some(x => !isFinite(x))) throw new Error(T('iterErrNum', i + 1));
+    out.push({ id: r[0], x: v.slice(0, 4), y: v.slice(4) });
+  });
+  if (!out.length) throw new Error(T('iterErrEmpty'));
+  return out;
+}
+function addRound() {
+  try {
+    const rows = parseRound($('iterArea').value), r = Math.max(...S.round) + 1;
+    rows.forEach((o, i) => { S.ids.push(o.id || `N${r}-${i + 1}`); S.X.push(o.x); o.y.forEach((v, k) => S.Y[k].push(v)); S.round.push(r); });
+    S.roundOn[r] = true; iterR = r;
+    paretoRes = null; refit(); save(); renderAll(); runPareto();
+    $('iterMsg').textContent = T('iterAdded', rows.length, r); $('iterArea').value = '';
+  } catch (e) { $('iterMsg').textContent = T('pasteFail') + e.message; }
+}
+function deleteRound(r) {
+  const keep = S.round.map(v => v !== r);
+  S.ids = S.ids.filter((_, i) => keep[i]); S.X = S.X.filter((_, i) => keep[i]); S.Y = S.Y.map(y => y.filter((_, i) => keep[i])); S.round = S.round.filter((_, i) => keep[i]);
+  delete S.roundOn[r]; if (iterR === r) iterR = null;
+  paretoRes = null; refit(); save(); renderAll(); runPareto();
+}
+function renderIter() {
+  const rs = rounds();
+  $('chkBlock').checked = !!S.block;
+  $('tblRounds').innerHTML = `<tr><th>${T('thRound')}</th><th>${T('thN')}</th><th style="text-align:left">${T('thRun')}</th><th>${T('thInclude')}</th><th></th></tr>` + rs.map(r => {
+    const ids = S.ids.filter((_, i) => S.round[i] === r);
+    return `<tr><td>${T('roundName', r)}</td><td class="num">${ids.length}</td><td style="white-space:normal;text-align:left">${esc(ids.join(', '))}</td><td style="text-align:center"><input type="checkbox" id="ron${r}"${roundOn(r) ? ' checked' : ''}${r === 0 ? ' disabled' : ''} aria-label="${T('thInclude')}"></td><td>${r === 0 ? '' : `<button id="rdel${r}">${T('btnDel')}</button>`}</td></tr>`;
+  }).join('');
+  rs.forEach(r => { if (r === 0) return;
+    $('ron' + r).onchange = e => { S.roundOn[r] = e.target.checked; paretoRes = null; refit(); save(); renderAll(); runPareto(); };
+    $('rdel' + r).onclick = () => deleteRound(r); });
+  const ext = rs.filter(r => r > 0);
+  if (!ext.length) { $('iterOut').innerHTML = `<p class="note">${T('iterOnlyBase')}</p>`; return; }
+  if (iterR == null || !ext.includes(iterR)) iterR = ext[ext.length - 1];
+  const r = iterR;
+  const Vb = view(i => S.round[i] < r && roundOn(S.round[i])), Vn = view(i => S.round[i] === r);
+  const Mb = fitSet(Vb), Va = fitSet(view(i => S.round[i] <= r && roundOn(S.round[i])));
+  let o = `<div class="row"><label class="f" for="iterRound">${T('iterPickRound')}<select id="iterRound">${ext.map(v => `<option value="${v}"${v === r ? ' selected' : ''}>${T('roundName', v)}</option>`).join('')}</select></label>
+    <label class="f" for="iterResp">${T('thResp')}<select id="iterResp">${S.responses.map((_, k) => `<option value="${k}"${k === iterK ? ' selected' : ''}>${esc(rname(k))}</option>`).join('')}</select></label></div>`;
+  o += `<h3 style="font-size:.95rem;margin:12px 0 2px">${T('iterCheckH', r)}</h3>`;
+  const mb = Mb[iterK];
+  if (!mb || mb.error) o += `<div class="errbox">${T('iterNeedFit')}${mb ? T('colon') + esc(errText(mb)) : ''}</div>`;
+  else {
+    const tol = 2 * mb.rmseLoo; let ok = 0, sd = 0, ss = 0;
+    o += `<div class="tbl"><table><tr><th>${T('thRun')}</th><th>${T('thCondS')}</th><th>${T('thPredBefore')}</th><th>${T('thMeas')}</th><th>${T('thDiff')}</th><th>${T('thTol')}</th><th>${T('thVerdict')}</th></tr>`;
+    Vn.idx.forEach((gi, n) => {
+      const pr = Core.predict(mb, Vn.X[n]), me = Vn.Y[iterK][n], d = me - pr, good = Math.abs(d) <= tol;
+      ok += good; sd += d; ss += d * d;
+      o += `<tr><td>${esc(Vn.ids[n])}</td><td class="num">${Vn.X[n].join(' / ')}</td><td class="num">${fmt(pr, 2)}</td><td class="num">${fmt(me, 2)}</td><td class="num">${pm(d)}</td><td class="num">± ${fmt(tol, 2)}</td><td>${good ? `<span class="pill good">${T('jFit')}</span>` : `<span class="pill warn">${T('jMiss')}</span>`}</td></tr>`;
+    });
+    o += '</table></div>';
+    const n = Vn.idx.length;
+    o += `<p class="note">${esc(T('iterSummary', n, ok, pm(sd / n), fmt(Math.sqrt(ss / n), 2), fmt(mb.rmseLoo, 2)))}</p>`;
+  }
+  o += `<h3 style="font-size:.95rem;margin:14px 0 2px">${T('iterCmpH', r)}</h3><div class="tbl"><table><tr><th>${T('thResp')}</th><th>R² ${T('thBefore')}</th><th>R² ${T('thAfter')}</th><th>R²<sub>pred</sub> ${T('thBefore')}</th><th>R²<sub>pred</sub> ${T('thAfter')}</th><th>${T('thLooRmse')} ${T('thBefore')}</th><th>${T('thLooRmse')} ${T('thAfter')}</th>${S.block ? `<th>${T('thOffset')}</th>` : ''}</tr>`;
+  S.responses.forEach((rr, k) => {
+    const a = Mb[k], b = Va[k]; const g = m => m && !m.error;
+    const off = g(b) && b.blockEff && b.blockEff.length ? b.blockEff.map(e => `${T('roundName', e.id)}: ${pm(e.val)} ± ${fmt(e.se, 2)}${rr.log ? ' (ln)' : ''}`).join('<br>') : '—';
+    o += `<tr><td>${esc(rname(k))}</td><td class="num">${g(a) ? fmt(a.R2, 3) : '—'}</td><td class="num">${g(b) ? fmt(b.R2, 3) : '—'}</td><td class="num ${g(a) && a.R2pred < 0 ? 'neg' : ''}">${g(a) ? fmt(a.R2pred, 3) : '—'}</td><td class="num ${g(b) && b.R2pred < 0 ? 'neg' : ''}">${g(b) ? fmt(b.R2pred, 3) : '—'}</td><td class="num">${g(a) ? fmt(a.rmseLoo, 2) : '—'}</td><td class="num">${g(b) ? fmt(b.rmseLoo, 2) : '—'}</td>${S.block ? `<td class="num" style="white-space:normal">${off}</td>` : ''}</tr>`;
+  });
+  o += '</table></div>';
+  const kd = p => p.x.join(' / ') + T('paren', `${rname(S.obj)} ${fmt(p.fo, 2)}${T('comma')}${rname(S.con)} ${fmt(p.fc, 2)}`);
+  if (paretoRes && paretoBefore) o += `<div class="result" style="flex-direction:column;gap:4px"><span class="k">${T('iterKneeH', paretoBefore.last)}</span><span class="num">${T('thBefore')}${T('colon')}${esc(kd(paretoBefore))}</span><span class="num"><b>${T('thAfter')}${T('colon')}${esc(kd(paretoRes.front[paretoRes.kneeIdx]))}</b></span></div>`;
+  else o += `<p class="note">${T('iterKneeNone')}</p>`;
+  $('iterOut').innerHTML = o;
+  $('iterRound').onchange = e => { iterR = +e.target.value; renderIter(); };
+  $('iterResp').onchange = e => { iterK = +e.target.value; renderIter(); };
+}
+
 /* ---------- 匯出 ---------- */
 function exportText() {
   const L = [];
-  L.push(T('exData')); L.push([T('thRun'), ...S.factors.map((_, j) => fname(j)), ...S.responses.map((_, k) => rname(k))].join('\t'));
-  S.ids.forEach((id, i) => L.push([id, ...S.X[i], ...S.Y.map(y => y[i])].join('\t')));
+  L.push(T('exData')); L.push([T('thRun'), T('thRound'), ...S.factors.map((_, j) => fname(j)), ...S.responses.map((_, k) => rname(k))].join('\t'));
+  S.ids.forEach((id, i) => L.push([id, S.round[i], ...S.X[i], ...S.Y.map(y => y[i])].join('\t')));
   L.push(''); L.push(T('exModels')); L.push([T('thResp'), T('thModel'), 'R2', 'R2pred', 'RMSE', 'RMSE_LOO', 'b0', ...[0, 1, 2, 3].flatMap(j => [`b1_${S.factors[j].name}`, `b2_${S.factors[j].name}`])].join('\t'));
   S.responses.forEach((r, k) => { const m = M[k]; if (!m || m.error) return; L.push([rname(k), r.log ? 'ln' : 'linear', fmt(m.R2, 4), fmt(m.R2pred, 4), fmt(m.rmse, 4), fmt(m.rmseLoo, 4), fmt(m.b[0], 6), ...[0, 1, 2, 3].flatMap(j => [fmt(m.b[1 + j], 6), fmt(m.b[5 + j], 6)])].join('\t')); });
   if (paretoRes) {
@@ -1109,7 +1275,7 @@ function setLang(l) {
 }
 
 /* ---------- 主流程 ---------- */
-function renderAll() { $('s6res').hidden = !paretoRes; renderStatus(); renderFactors(); renderResponses(); renderData(); renderS2(); renderS3(); renderS4(); renderS5(); renderS6Controls(); if (paretoRes) { renderParetoPlot(); renderPick(); } renderS7(); renderS8(); }
+function renderAll() { $('s6res').hidden = !paretoRes; renderStatus(); renderFactors(); renderResponses(); renderData(); renderS2(); renderS3(); renderS4(); renderS5(); renderS6Controls(); if (paretoRes) { renderParetoPlot(); renderPick(); } renderS7(); renderS8(); renderIter(); }
 function bind() {
   $('langZh').onclick = () => setLang('zh');
   $('langEn').onclick = () => setLang('en');
@@ -1124,6 +1290,8 @@ function bind() {
   $('s6conOp').onchange = e => { S.conOp = e.target.value; save(); };
   $('btnAddExtra').onclick = () => { S.extra.push({ k: 0, op: 'ge', val: 0 }); save(); renderExtra(); };
   $('btnPareto').onclick = runPareto;
+  $('btnAddRound').onclick = addRound;
+  $('chkBlock').onchange = e => { S.block = e.target.checked; paretoRes = null; refit(); save(); renderAll(); runPareto(); };
   $('epsSlider').oninput = e => { pickIdx = +e.target.value; pickX = paretoRes.front[pickIdx].x.slice(); renderParetoPlot(); renderPick(); };
   $('epsSlider').onchange = () => { S.s7.fixed = pickX.slice(); renderS7(); };
   $('btnKnee').onclick = () => { pickIdx = paretoRes.kneeIdx; $('epsSlider').value = pickIdx; pickX = paretoRes.front[pickIdx].x.slice(); renderParetoPlot(); renderPick(); S.s7.fixed = pickX.slice(); renderS7(); };

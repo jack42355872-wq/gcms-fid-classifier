@@ -180,7 +180,7 @@ button, input { font: inherit; color: inherit; }
     { id: 'chrom', src: '/static/suite/chrom.html', name: 'Chromatogram Grid', tab: '層析圖排版', sub: 'm × n 子圖', cat: '圖表',
       what: 'GC-MS / FID 譜圖排成 m × n 子圖，加標題與操作條件，輸出論文用圖。', io: 'Shimadzu ASCII / CSV / xlsx → PNG、SVG' },
     { id: 'l16', src: '/static/suite/l16.html', name: 'L16 最佳化工作台', tab: 'L16 最佳化', sub: 'L16(4⁵) · Pareto', cat: '實驗設計',
-      what: '正交實驗的主效應、二階模型與預測能力、加權篩選、約束最佳化與等高線。', io: '實驗表（4 參數 + 指標）→ 最佳條件、匯出文字' },
+      what: '正交實驗的主效應、二階模型與預測能力、加權篩選、約束最佳化與等高線，並可分輪加入新實驗重新建模。', io: '實驗表（4 參數 + 指標）+ 新增輪次 → 最佳條件、事前檢驗、匯出文字' },
   ];
   const BY = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
   const IDS = ['home'].concat(TOOLS.map((t) => t.id));
@@ -389,7 +389,10 @@ button, input { font: inherit; color: inherit; }
     } else out.chrom = '範例 6 條 TIC';
     // L16
     const l = parse('l16-workbench-v1');
-    if (l && Array.isArray(l.X)) out.l16 = `${l.source ? '範例數據' : '你的數據'} · ${l.X.length} 組實驗、${(l.responses || []).length} 個指標`;
+    if (l && Array.isArray(l.X)) {
+      const nr = Array.isArray(l.round) ? new Set(l.round.filter((r) => r !== 0)).size : 0;
+      out.l16 = `${l.source ? '範例數據' : '你的數據'} · ${l.X.length} 組實驗${nr ? `（含新增 ${nr} 輪）` : ''}、${(l.responses || []).length} 個指標`;
+    }
     else out.l16 = '範例 L16 數據';
     return out;
   }

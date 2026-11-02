@@ -296,7 +296,7 @@ td.nowrap { white-space: nowrap; }
   }
 
   /**
-   * S: { flows: {h2, co2, out, is, outMode}, method: [{id,name,rt,win,f,role,n}], h2Mode, liqC816, restLabel }
+   * S: { flows: {h2, co2, out, is, outMode}, method: [{id,name,rt,win,f,role,n}], h2Mode ('diff' | 'measured' | 'input'), h2Conc, liq57, liqC816, liq16p, restLabel }
    * roles: co2 | h2 | co | hc (n = carbon number) | inert (air, O2, N2: removed before normalising) | is (internal standard) | ignore
    */
   function calc(S, peaks, assignment) {
@@ -314,7 +314,13 @@ td.nowrap { white-space: nowrap; }
     });
     let h2 = [...comp.values()].find((c) => c.role === 'h2');
     const sumOthers = [...comp.values()].filter((c) => c.role !== 'h2').reduce((t, c) => t + c.raw, 0);
-    if (S.h2Mode !== 'measured') {
+    if (S.h2Mode === 'input') {
+      // H2 concentration typed in (e.g. from a separate measurement), same % scale as area × factor
+      if (h2) comp.delete(h2.name);
+      const hv = S.h2Conc !== '' && S.h2Conc != null && isFinite(+S.h2Conc) ? +S.h2Conc : NaN;
+      h2 = { name: 'H2', role: 'h2', n: 0, raw: hv, peaks: [], byInput: true };
+      comp.set('H2', h2);
+    } else if (S.h2Mode !== 'measured') {
       if (h2) comp.delete(h2.name);
       h2 = { name: 'H2', role: 'h2', n: 0, raw: 100 - sumOthers, peaks: [], byDiff: true };
       comp.set('H2', h2);
@@ -353,14 +359,26 @@ td.nowrap { white-space: nowrap; }
     r.Yrest = r.Xco2 - r.Yco - sumY;
     r.Srest = (r.Yrest / XhcBasis) * 100;      // = 100 − Σ S_i (CO-free)
     r.SrestTot = (r.Yrest / r.Xco2) * 100;
-    const nmax = r.hc.length ? Math.max(...r.hc.map((x) => x.n)) : 0;
+    // highest carbon number in the method (a C4H10 row with no peak today still makes the rest C5+)
+    const nmaxM = Math.max(0, ...(S.method || []).filter((m) => m.role === 'hc').map((m) => +m.n || 1));
+    const nmax = Math.max(nmaxM, r.hc.length ? Math.max(...r.hc.map((x) => x.n)) : 0);
+    r.nmax = nmax;
     r.restLabel = S.restLabel && S.restLabel.trim() ? S.restLabel.trim() : `C${nmax + 1}+`;
-    const frac = isFinite(+S.liqC816) && S.liqC816 !== '' && S.liqC816 != null ? +S.liqC816 / 100 : null;
-    r.Sc816 = frac != null ? r.Srest * frac : null;
-    r.Yc816 = frac != null ? r.Yrest * frac : null;
+    // the rest split by the liquid-phase carbon fractions (% of the rest): C5–C7, C8–C16, C16+ (> C16)
+    const pf = (v) => (v !== '' && v != null && isFinite(+v) ? +v / 100 : null);
+    r.cuts = [['c57', 'C5–C7', S.liq57], ['c816', 'C8–C16', S.liqC816], ['c16p', 'C16+', S.liq16p]].map(([key, label, v]) => {
+      const f = pf(v);
+      return { key, label, frac: f, Y: f == null ? null : r.Yrest * f, S: f == null ? null : r.Srest * f, Stot: f == null ? null : r.SrestTot * f };
+    });
+    const cutOn = r.cuts.filter((c) => c.frac != null);
+    r.cutSum = cutOn.length ? cutOn.reduce((s, c) => s + c.frac, 0) : null;
+    r.Sc816 = r.cuts[1].S;
+    r.Yc816 = r.cuts[1].Y;
     r.groups = {
       C1: r.hc.filter((x) => x.n === 1).reduce((t, x) => t + x.S, 0),
       C2C4: r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + x.S, 0), // C2 … C_nmax (everything measured above C1)
+      C1t: r.hc.filter((x) => x.n === 1).reduce((t, x) => t + x.Stot, 0), // total-carbon basis (CO included)
+      C2C4t: r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + x.Stot, 0),
       YC1: r.hc.filter((x) => x.n === 1).reduce((t, x) => t + x.Y, 0),
       YC2C4: r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + x.Y, 0),
     };
@@ -390,16 +408,18 @@ td.nowrap { white-space: nowrap; }
     { id: 'm1', name: 'Air', rt: 0.524, win: 0.08, f: 0.00003, role: 'inert', n: 0 },
     { id: 'm2', name: 'CH4', rt: 0.669, win: 0.08, f: 0.00008, role: 'hc', n: 1 },
     { id: 'm3', name: 'CO2', rt: 0.904, win: 0.15, f: 0.00007, role: 'co2', n: 1 },
+    { id: 'm8', name: 'C2H4', rt: 1.4, win: 0.15, f: 0.000081, role: 'hc', n: 2 },
     { id: 'm4', name: 'O2', rt: 4.046, win: 0.2, f: 0.0001, role: 'inert', n: 0 },
     { id: 'm5', name: 'C3H8', rt: 5.431, win: 0.2, f: 0.0001, role: 'hc', n: 3 },
     { id: 'm6', name: 'C2H6', rt: 6.133, win: 0.2, f: 0.00005, role: 'hc', n: 2 },
     { id: 'm7', name: 'CO', rt: 14.789, win: 0.3, f: 0.0002, role: 'co', n: 1 },
+    { id: 'm9', name: 'C4H10', rt: 20.8, win: 0.4, f: 0.00005, role: 'hc', n: 4 },
   ];
   const ROLES = [['co2', 'CO₂ 反應物'], ['h2', 'H₂ 實測'], ['co', 'CO'], ['hc', '烴類'], ['inert', '空氣（扣除）'], ['is', '內標'], ['ignore', '不使用']];
   const fresh = () => ({
     cond: { T: 300, P: 20, GHSV: 3600, TOS: '' },
     flows: { h2: 240, co2: 66.7, out: 170, is: 0, outMode: 'direct' },
-    h2Mode: 'diff', liqC816: 87.14, restLabel: '',
+    h2Mode: 'diff', h2Conc: '', liq57: '', liqC816: 87.14, liq16p: '', restLabel: '', mig2: true,
     method: DEFAULT_METHOD(), paste: SAMPLE, ov: {}, runs: [], curRun: null,
   });
   const LS = 'tcd-tool-v1', LSH = 'tcd-tool-hist-v1';
@@ -408,6 +428,18 @@ td.nowrap { white-space: nowrap; }
   if (!state || !state.method || !state.flows) state = fresh();
   const newId = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   (state.runs || (state.runs = [])).forEach((r) => { if (!r.id) r.id = newId(); });
+  // one-time update of a saved method: add C2H4 and C4H10 if missing (saved runs keep their own method)
+  if (!state.mig2) {
+    [{ id: 'm8', name: 'C2H4', rt: 1.4, win: 0.15, f: 0.000081, role: 'hc', n: 2 }, { id: 'm9', name: 'C4H10', rt: 20.8, win: 0.4, f: 0.00005, role: 'hc', n: 4 }].forEach((a) => {
+      if (state.method.some((m) => String(m.name).trim().toUpperCase() === a.name)) return;
+      const id = state.method.some((m) => m.id === a.id) ? 'm' + a.name : a.id;
+      state.method.push({ ...a, id });
+    });
+    state.method.sort((a, b) => a.rt - b.rt);
+    if (!('liq57' in state)) state.liq57 = '';
+    if (!('liq16p' in state)) state.liq16p = '';
+    state.mig2 = true;
+  }
 
   // ---------- undo / redo (whole state is small, so snapshots are the full JSON) ----------
   let hist = { undo: [], redo: [] };
@@ -455,13 +487,16 @@ td.nowrap { white-space: nowrap; }
     $('#condForm').innerHTML =
       fld('cT', 'T', c.T, '°C') + fld('cP', 'P', c.P, 'bar') + fld('cG', 'GHSV', c.GHSV, 'mL g⁻¹ h⁻¹') + fld('cTOS', 'TOS（反應時間）', c.TOS, 'h') +
       fld('fH2', 'H₂ 入口流量', F.h2, 'mL/min') + fld('fCO2', 'CO₂ 入口流量', F.co2, 'mL/min') +
+      (state.h2Mode === 'input' ? fld('h2c', 'H₂ 濃度（出口氣體）', state.h2Conc, '%') : '') +
       (F.outMode === 'is' ? fld('fIS', '內標入口流量', F.is, 'mL/min') : fld('fOut', '出口流量（校正後）', F.out, 'mL/min')) +
-      fld('liq', '液相 C8–C16 比例', state.liqC816, '%') +
-      `<label class="fld" for="restLab">差減項名稱<span class="row"><input type="text" id="restLab" value="${esc(state.restLabel)}" placeholder="${R ? esc(R.restLabel) : 'C4+'}（自動）"></span></label>`;
+      fld('liq57', `${R ? esc(R.restLabel) : 'C5+'} 中 C5–C7 比例`, state.liq57, '%') +
+      fld('liq', `${R ? esc(R.restLabel) : 'C5+'} 中 C8–C16 比例`, state.liqC816, '%') +
+      fld('liq16p', `${R ? esc(R.restLabel) : 'C5+'} 中 C16+ 比例`, state.liq16p, '%') +
+      `<label class="fld" for="restLab">差減項名稱<span class="row"><input type="text" id="restLab" value="${esc(state.restLabel)}" placeholder="${R ? esc(R.restLabel) : 'C5+'}（自動）"></span></label>`;
     const ratio = F.co2 > 0 ? F.h2 / F.co2 : NaN;
     $('#flowModes').innerHTML = `<span>H₂/CO₂ = <b class="mono">${f2(ratio)}</b>（由流量算）</span>
       <span>出口流量 <span class="seg"><button type="button" data-om="direct" aria-pressed="${F.outMode !== 'is'}">直接輸入</button><button type="button" data-om="is" aria-pressed="${F.outMode === 'is'}">由內標推算</button></span></span>
-      <span>H₂ <span class="seg"><button type="button" data-h2="diff" aria-pressed="${state.h2Mode !== 'measured'}">差減（100 − 其他）</button><button type="button" data-h2="measured" aria-pressed="${state.h2Mode === 'measured'}">實測</button></span></span>`;
+      <span>H₂ <span class="seg"><button type="button" data-h2="diff" aria-pressed="${state.h2Mode !== 'measured' && state.h2Mode !== 'input'}">差減（100 − 其他）</button><button type="button" data-h2="measured" aria-pressed="${state.h2Mode === 'measured'}">實測峰</button><button type="button" data-h2="input" aria-pressed="${state.h2Mode === 'input'}">直接輸入濃度</button></span></span>`;
   }
   function renderPeaks() {
     const names = []; state.method.forEach((m) => { if (!names.some((x) => x.name === m.name)) names.push(m); });
@@ -477,8 +512,8 @@ td.nowrap { white-space: nowrap; }
       return `<tr class="${m ? '' : 'dim'}"><td class="mono">${esc(p.pk)}</td><td class="r mono">${p.rt.toFixed(3)}</td><td class="r mono">${p.area}</td><td><select data-asg="${esc(k)}" aria-label="指定峰 ${esc(p.pk)}">${opts}</select>${manual ? ' <span class="pill" title="手動指定">手動</span>' : ''}</td><td class="r mono">${m ? m.f : '—'}</td><td class="r mono">${p.raw != null ? p.raw.toFixed(4) : '—'}</td></tr>`;
     }).join('');
     const h2 = R.h2;
-    const h2row = state.h2Mode !== 'measured' ? `<tr><td></td><td></td><td></td><td>H2（差減）</td><td></td><td class="r mono">${h2.raw.toFixed(4)}</td></tr>` : '';
-    $('#peaks').innerHTML = `<thead><tr><th>Peak#</th><th class="r">Ret.Time</th><th class="r">Area</th><th>指定為</th><th class="r">係數</th><th class="r">濃度 %</th></tr></thead><tbody>${rows}${h2row}<tr class="sum"><td colspan="5">合計</td><td class="r mono">${(sumRaw + (state.h2Mode !== 'measured' ? h2.raw : 0)).toFixed(2)}</td></tr></tbody>`;
+    const h2row = state.h2Mode !== 'measured' ? `<tr><td></td><td></td><td></td><td>H2（${state.h2Mode === 'input' ? '直接輸入' : '差減'}）</td><td></td><td class="r mono">${isFinite(h2.raw) ? h2.raw.toFixed(4) : '—'}</td></tr>` : '';
+    $('#peaks').innerHTML = `<thead><tr><th>Peak#</th><th class="r">Ret.Time</th><th class="r">Area</th><th>指定為</th><th class="r">係數</th><th class="r">濃度 %</th></tr></thead><tbody>${rows}${h2row}<tr class="sum"><td colspan="5">合計</td><td class="r mono">${(sumRaw + (state.h2Mode !== 'measured' && isFinite(h2.raw) ? h2.raw : 0)).toFixed(2)}</td></tr></tbody>`;
   }
   function renderMethod() {
     $('#method').innerHTML = `<thead><tr><th>成分</th><th class="r">RT (min)</th><th class="r">± 容許</th><th class="r">係數 %/面積</th><th>角色</th><th class="r">碳數</th><th></th></tr></thead><tbody>${state.method.map((m, i) => `<tr>
@@ -496,38 +531,46 @@ td.nowrap { white-space: nowrap; }
     const kpi = (k, v, flag) => `<div class="kpi${flag ? ' flag' : ''}"><div class="k">${k}</div><div class="v num">${f2(v)}<small>%</small></div></div>`;
     $('#kpis').innerHTML = kpi('CO₂ conversion', R.Xco2) + kpi('H₂ conversion', R.Xh2, over) + kpi('CO selectivity', R.Sco) + kpi('CO yield', R.Yco);
     $('#resNote').textContent = `出口流量 ${f2(R.Fout)} mL/min${R.outNote ? '；' + R.outNote : ''}`;
-    const nmax = R.hc.length ? Math.max(...R.hc.map((x) => x.n)) : 1;
+    const nmax = R.nmax || 1;
     const midLab = nmax >= 3 ? `C2–C${nmax}` : 'C2';
     const coF = R.comps.filter((c) => c.role === 'co').reduce((t, c) => t + c.fout, 0);
-    const row = (sw, name, n, fout, Y, S, St, cls) => `<tr class="${cls || ''}"><td>${sw ? `<span class="sw" style="background:${sw}"></span>` : ''}${name}</td><td class="r mono">${f2(Y)}</td><td class="r mono">${S == null ? '' : f2(S)}</td><td class="r mono">${St == null ? '' : f2(St)}</td><td class="r mono">${fout != null ? f2(fout, 3) : ''}</td><td class="r mono">${n ?? ''}</td></tr>`;
-    $('#results').innerHTML = `<thead><tr><th>Product</th><th class="r">Yield %</th><th class="r">Selectivity %<br><span class="muted small">扣除 CO 基準</span></th><th class="r">Selectivity %<br><span class="muted small">含 CO 基準</span></th><th class="r">出口流量<br><span class="muted small">mL/min</span></th><th class="r">碳數</th></tr></thead><tbody>
+    // selectivity columns: total-carbon basis first (CO included, sums to 100 %), CO-free kept for reference
+    const row = (sw, name, n, fout, Y, S, St, cls) => `<tr class="${cls || ''}"><td>${sw ? `<span class="sw" style="background:${sw}"></span>` : ''}${name}</td><td class="r mono">${f2(Y)}</td><td class="r mono"><b>${St == null ? '' : f2(St)}</b></td><td class="r mono muted">${S == null ? '' : f2(S)}</td><td class="r mono">${fout != null ? f2(fout, 3) : ''}</td><td class="r mono">${n ?? ''}</td></tr>`;
+    const cutRows = R.cuts.filter((c) => c.frac != null).map((c) => row('', `<span class="muted">└ 其中</span> ${c.label}（${esc(R.restLabel)} × ${f2(c.frac * 100)}%）`, c.key === 'c57' ? '5–7' : c.key === 'c816' ? '8–16' : '>16', null, c.Y, c.S, c.Stot)).join('') +
+      (R.cutSum != null && Math.abs(R.cutSum - 1) > 1e-6 ? row('', `<span class="muted">└ 其中 ${R.cutSum < 1 ? '未分配' : '超出 100%'}（${esc(R.restLabel)} × ${f2((1 - R.cutSum) * 100)}%）</span>`, '', null, R.Yrest * (1 - R.cutSum), R.Srest * (1 - R.cutSum), R.SrestTot * (1 - R.cutSum)) : '');
+    $('#results').innerHTML = `<thead><tr><th>Product</th><th class="r">Yield %</th><th class="r">Selectivity %<br><span class="muted small">含 CO，合計 100%</span></th><th class="r">Selectivity %<br><span class="muted small">扣除 CO（參考）</span></th><th class="r">出口流量<br><span class="muted small">mL/min</span></th><th class="r">碳數</th></tr></thead><tbody>
       ${row('var(--c-co)', 'CO', 1, coF, R.Yco, null, R.Sco)}
       ${R.hc.map((x) => row('var(--c-hc)', x.name, x.n, x.fout, x.Y, x.S, x.Stot)).join('')}
       ${row('', esc(R.restLabel) + '（差減）', `≥${nmax + 1}`, null, R.Yrest, R.Srest, R.SrestTot)}
-      ${R.Sc816 != null ? row('', 'C8–C16（' + esc(R.restLabel) + ' × 液相比例）', '', null, R.Yc816, R.Sc816, R.Yc816 / R.Xco2 * 100) : ''}
-      <tr class="sum"><td>合計（CO + 烴類 + 差減）</td><td class="r mono">${f2(R.Yco + R.hc.reduce((t, x) => t + x.Y, 0) + R.Yrest)}</td><td class="r mono">${f2(R.hc.reduce((t, x) => t + x.S, 0) + R.Srest)}</td><td class="r mono">${f2(R.Sco + R.hc.reduce((t, x) => t + x.Stot, 0) + R.SrestTot)}</td><td></td><td></td></tr></tbody>`;
+      ${cutRows}
+      <tr class="sum"><td>合計（CO + 烴類 + ${esc(R.restLabel)}）</td><td class="r mono">${f2(R.Yco + R.hc.reduce((t, x) => t + x.Y, 0) + R.Yrest)}</td><td class="r mono"><b>${f2(R.Sco + R.hc.reduce((t, x) => t + x.Stot, 0) + R.SrestTot)}</b></td><td class="r mono muted">${f2(R.hc.reduce((t, x) => t + x.S, 0) + R.Srest)}</td><td></td><td></td></tr></tbody>`;
     const sum = summaryRow();
-    $('#summary').innerHTML = `<thead><tr><th class="r">CO₂ conv.</th><th class="r">H₂ conv.</th><th class="r">CO yield</th><th class="r">CO sele.</th><th class="r">Sel. C1</th><th class="r">Sel. ${midLab}</th><th class="r">Sel. ${esc(R.restLabel)}</th><th class="r">Sel. C8–C16</th><th class="r">C8–C16 in liq.</th><th class="r">Yield C1</th><th class="r">Yield ${midLab}</th><th class="r">Yield ${esc(R.restLabel)}</th><th class="r">Yield C8–C16</th></tr></thead><tbody><tr>${sum.map((v) => `<td class="r mono">${f2(v)}</td>`).join('')}</tr></tbody>`;
+    $('#summary').innerHTML = `<thead><tr><th class="r">CO₂ conv.</th><th class="r">H₂ conv.</th><th class="r">CO yield</th><th class="r">CO sele.</th><th class="r">Sel. C1</th><th class="r">Sel. ${midLab}</th><th class="r">Sel. ${esc(R.restLabel)}</th><th class="r">Sel. C5–C7</th><th class="r">Sel. C8–C16</th><th class="r">Sel. C16+</th><th class="r">Sel. sum</th><th class="r">Yield C1</th><th class="r">Yield ${midLab}</th><th class="r">Yield ${esc(R.restLabel)}</th><th class="r">Yield C5–C7</th><th class="r">Yield C8–C16</th><th class="r">Yield C16+</th></tr></thead><tbody><tr>${sum.map((v) => `<td class="r mono">${f2(v)}</td>`).join('')}</tr></tbody>`;
     renderChecks(over);
     renderFx();
     updateFigPreview(150);
   }
   function summaryRow() {
-    return [R.Xco2, R.Xh2, R.Yco, R.Sco, R.groups.C1, R.groups.C2C4, R.Srest, R.Sc816, state.liqC816, R.groups.YC1, R.groups.YC2C4, R.Yrest, R.Yc816];
+    const s = sumObj(R);
+    return [s.Xco2, s.Xh2, s.Yco, s.Sco, s.SC1, s.SC2n, s.Srest, s.S57, s.S816, s.S16p, s.Ssum, s.YC1, s.YC2n, s.Yrest, s.Y57, s.Y816, s.Y16p];
   }
   function renderChecks(over) {
     const out = [];
     const ratio = R.h2Ratio;
-    if (over) out.push(`<div class="chk bad"><b>H₂ 轉化率超過化學計量上限</b><div class="d">就算轉化的 CO₂ 全部變成 CH₄（最耗 H₂ 的情況），H₂ 轉化率最多是 4 × X_CO₂ ÷ (H₂/CO₂) = 4 × ${f2(R.Xco2)}% ÷ ${f2(ratio)} = ${f2(R.Xh2Max)}%，現在算出 ${f2(R.Xh2)}%。${state.h2Mode !== 'measured' ? 'H₂ 是差減得到的，其他成分的誤差會全部累積到 H₂。' : ''}</div></div>`);
+    if (over) out.push(`<div class="chk bad"><b>H₂ 轉化率超過化學計量上限</b><div class="d">就算轉化的 CO₂ 全部變成 CH₄（最耗 H₂ 的情況），H₂ 轉化率最多是 4 × X_CO₂ ÷ (H₂/CO₂) = 4 × ${f2(R.Xco2)}% ÷ ${f2(ratio)} = ${f2(R.Xh2Max)}%，現在算出 ${f2(R.Xh2)}%。${state.h2Mode === 'input' ? 'H₂ 是直接輸入的濃度，請確認它跟其他成分是同一次取樣、同一個 % 尺度。' : state.h2Mode !== 'measured' ? 'H₂ 是差減得到的，其他成分的誤差會全部累積到 H₂。' : ''}</div></div>`);
     else if (isFinite(R.Xh2)) out.push(`<div class="chk ok"><b>H₂ 轉化率在化學計量上限內</b><div class="d">${f2(R.Xh2)}% ≤ 4 × ${f2(R.Xco2)}% ÷ ${f2(ratio)} = ${f2(R.Xh2Max)}%</div></div>`);
     if (isFinite(R.h2Consumed) && R.h2Need > 0) {
       const q = R.h2Consumed / R.h2Need;
       out.push(`<div class="chk ${q > 1.15 || q < 0.85 ? 'warn' : 'ok'}"><b>H₂ 平衡：量到消耗 ${f2(R.h2Consumed)} mL/min，產物需要 ${f2(R.h2Need)} mL/min（比值 ${f2(q)}）</b><div class="d">需要量 = CO×1 + Σ(3n+1)×烷烴 + ${esc(R.restLabel)} 碳 × 3（以 CH₂ 估）。比值偏離 1 越多，H₂ 或出口流量的誤差越大。</div></div>`);
     }
-    out.push(`<div class="chk ${R.Yrest < 0 ? 'bad' : 'info'}"><b>氣相碳回收 ${f2(R.carbonGas)}%</b><div class="d">${R.Yrest < 0 ? `氣相量到的碳已經超過入口，${esc(R.restLabel)} 差減成負值；檢查校正係數或出口流量。` : `剩下 ${f2(100 - R.carbonGas)}% 的入口碳歸到 ${esc(R.restLabel)}。這是差減值，包含液相產物、沒量到的氣體（例如 C4、烯烴）和所有量測誤差。`}</div></div>`);
+    out.push(`<div class="chk ${R.Yrest < 0 ? 'bad' : 'info'}"><b>氣相碳回收 ${f2(R.carbonGas)}%</b><div class="d">${R.Yrest < 0 ? `氣相量到的碳已經超過入口，${esc(R.restLabel)} 差減成負值；檢查校正係數或出口流量。` : `剩下 ${f2(100 - R.carbonGas)}% 的入口碳歸到 ${esc(R.restLabel)}。這是差減值，包含液相產物、沒量到的氣體和所有量測誤差。`}</div></div>`);
+    if (R.cutSum != null && R.cutSum > 1 + 1e-6) out.push(`<div class="chk warn"><b>C5–C7 + C8–C16 + C16+ 比例合計 ${f2(R.cutSum * 100)}%</b><div class="d">超過 100%，三段加起來會比 ${esc(R.restLabel)} 還多。請檢查液相比例。</div></div>`);
+    else if (R.cutSum != null && R.cutSum < 1 - 1e-6) out.push(`<div class="chk info"><b>C5–C7 + C8–C16 + C16+ 比例合計 ${f2(R.cutSum * 100)}%</b><div class="d">剩下 ${f2((1 - R.cutSum) * 100)}% 的 ${esc(R.restLabel)} 沒有分到任何一段，結果表列為「未分配」。三段都填、合計 100% 時就沒有這一列。</div></div>`);
     const un = R.peakRows.filter((p) => !p.method);
     if (un.length) out.push(`<div class="chk info"><b>${un.length} 根峰沒有被使用</b><div class="d">${un.map((p) => `${p.rt.toFixed(3)} min（面積 ${p.area}）`).join('、')}。如果其中有產物，請在上面的表或校正方法裡指定。</div></div>`);
-    if (state.h2Mode !== 'measured' && R.h2.raw < 0) out.push(`<div class="chk bad"><b>其他成分加總超過 100%</b><div class="d">H₂ 差減成負值，請檢查校正係數。</div></div>`);
+    if (state.h2Mode === 'input' && !isFinite(R.h2.raw)) out.push(`<div class="chk bad"><b>還沒輸入 H₂ 濃度</b><div class="d">H₂ 模式是「直接輸入濃度」，請在「反應條件與流量」填 H₂ 濃度；沒填之前 H₂ 轉化率無法計算，其他成分的歸一化也少了 H₂。</div></div>`);
+    if (state.h2Mode === 'input' && isFinite(R.h2.raw)) { const tot = R.comps.filter((c) => c.role !== 'h2').reduce((s, c) => s + c.raw, 0) + R.h2.raw; if (Math.abs(tot - 100) > 5) out.push(`<div class="chk warn"><b>輸入的 H₂ 加上其他成分合計 ${f2(tot)}%</b><div class="d">離 100% 差 ${f2(tot - 100)}。結果仍會扣空氣後歸一化，但差距大通常代表 H₂ 濃度或校正係數的尺度不一致。</div></div>`); }
+    if (state.h2Mode === 'diff' && R.h2.raw < 0) out.push(`<div class="chk bad"><b>其他成分加總超過 100%</b><div class="d">H₂ 差減成負值，請檢查校正係數。</div></div>`);
     const inert = R.comps.filter((c) => c.role === 'inert').reduce((t, c) => t + c.raw, 0);
     if (inert > 5) out.push(`<div class="chk warn"><b>空氣成分 ${f2(inert)}%</b><div class="d">Air / O₂ 比例偏高，可能是取樣漏氣；結果已扣除它們再歸一化。</div></div>`);
     $('#checks').innerHTML = out.join('');
@@ -544,17 +587,18 @@ td.nowrap { white-space: nowrap; }
       ['H₂ 轉化率', isMode ? `X_H₂ = (F_H₂,in − F_H₂,out) ÷ F_H₂,in` : `X_H₂ = (${f2(+F.h2)} − ${f2(R.Fout)} × ${f2(yh2, 4)}) ÷ ${f2(+F.h2)} = ${f2(R.Xh2)}%`],
       ['CO 產率與選擇性', `Y_CO = F_out × y_CO ÷ F_CO₂,in = ${f2(R.Fout)} × ${f2(yco, 4)} ÷ ${f2(+F.co2)} = ${f2(R.Yco)}%；S_CO = Y_CO ÷ X_CO₂ = ${f2(R.Sco)}%`],
       ['烴類產率', R.hc.map((x) => `Y_${x.name} = ${x.n} × ${f2(x.fout, 3)} ÷ ${f2(+F.co2)} = ${f2(x.Y)}%`).join('；')],
-      ['烴類選擇性（扣除 CO）', `S_i = Y_i ÷ (X_CO₂ − Y_CO) = Y_i ÷ ${f2(R.Xco2 - R.Yco)}%`],
-      [`${R.restLabel}（差減）`, `Y = X_CO₂ − Y_CO − ΣY_i = ${f2(R.Yrest)}%；S = 100 − ΣS_i = ${f2(R.Srest)}%`],
+      ['選擇性（含 CO，合計 100%）', `S_i = Y_i ÷ X_CO₂ = Y_i ÷ ${f2(R.Xco2)}%；S_CO + ΣS_烴類 + S_${R.restLabel} = ${f2(R.Sco)} + ${f2(R.hc.reduce((t, x) => t + x.Stot, 0))} + ${f2(R.SrestTot)} = ${f2(R.Sco + R.hc.reduce((t, x) => t + x.Stot, 0) + R.SrestTot)}%`],
+      [`${R.restLabel}（差減）`, `Y = X_CO₂ − Y_CO − ΣY_i = ${f2(R.Xco2)} − ${f2(R.Yco)} − ${f2(R.hc.reduce((t, x) => t + x.Y, 0))} = ${f2(R.Yrest)}%；S = Y ÷ X_CO₂ = ${f2(R.SrestTot)}%`],
+      ['扣除 CO 的選擇性（參考）', `S_i = Y_i ÷ (X_CO₂ − Y_CO) = Y_i ÷ ${f2(R.Xco2 - R.Yco)}%，烴類 + ${R.restLabel} 合計 100%`],
     ];
-    if (R.Sc816 != null) lines.push(['C8–C16', `S = S_${R.restLabel} × ${f2(state.liqC816)}% = ${f2(R.Sc816)}%；Y = Y_${R.restLabel} × ${f2(state.liqC816)}% = ${f2(R.Yc816)}%`]);
+    R.cuts.filter((c) => c.frac != null).forEach((c) => lines.push([c.label, `Y = Y_${R.restLabel} × ${f2(c.frac * 100)}% = ${f2(R.Yrest)} × ${f2(c.frac, 4)} = ${f2(c.Y)}%；S = Y ÷ X_CO₂ = ${f2(c.Stot)}%`]));
     $('#fx').innerHTML = lines.map(([l, e]) => `<div><div class="lab">${l}</div><div class="eq">${esc(e)}</div></div>`).join('') +
-      (R.Sc816 != null ? `<div class="chk info"><b>跟你原本 Excel 的差別</b><div class="d">原本 Summary 的 C8–C16 產率是 X_CO₂ × S_C8–C16 = ${f2(R.Xco2 * R.Sc816 / 100)}%。但 S_C8–C16 是扣除 CO 的基準，換算成產率要再乘 (1 − S_CO)，也就是上面的 ${f2(R.Yc816)}%。其他數字都跟原本的 Excel 一樣。</div></div>` : '');
+      `<div class="chk info"><b>選擇性基準</b><div class="d">摘要、已存的數據和匯出的 Excel 都用含 CO 的基準（S = Y ÷ X_CO₂），CO、烴類、${esc(R.restLabel)} 合計 100%。原本 Excel 用的扣除 CO 基準留在結果表最後一欄當參考。</div></div>`;
   }
   function renderRuns() {
     const rs = state.runs;
     if (!rs.length) { $('#runs').innerHTML = '<tbody><tr><td class="muted">還沒有存任何一筆。算好之後按「存成一筆」。</td></tr></tbody>'; return; }
-    $('#runs').innerHTML = `<thead><tr><th>名稱</th><th class="r">T</th><th class="r">P</th><th class="r">GHSV</th><th class="r">TOS</th><th class="r">X CO₂</th><th class="r">X H₂</th><th class="r">S CO</th><th class="r">Y CO</th><th class="r">S C1</th><th class="r">S C2–Cn</th><th class="r">S 差減</th><th class="r">S C8–C16</th><th class="r">Y C8–C16</th><th class="r">氣相碳 %</th><th>標記</th><th></th></tr></thead><tbody>${rs.map((r, i) => `<tr class="click${state.curRun === i ? ' cur' : ''}" data-load="${i}"><td>${esc(r.name)}</td><td class="r mono">${esc(r.cond.T)}</td><td class="r mono">${esc(r.cond.P)}</td><td class="r mono">${esc(r.cond.GHSV)}</td><td class="r mono">${esc(r.cond.TOS ?? '')}</td>${['Xco2', 'Xh2', 'Sco', 'Yco', 'C1', 'C2C4', 'Srest', 'Sc816', 'Yc816', 'carbonGas'].map((k) => `<td class="r mono">${f2(r.res[k])}</td>`).join('')}<td>${r.res.Xh2 > r.res.Xh2Max + 1e-9 ? '<span class="pill b">H₂ 超過上限</span>' : ''}</td><td><button type="button" class="linkbtn" data-rdel="${i}" aria-label="刪除 ${esc(r.name)}">×</button></td></tr>`).join('')}</tbody>`;
+    $('#runs').innerHTML = `<thead><tr><th>名稱</th><th class="r">T</th><th class="r">P</th><th class="r">GHSV</th><th class="r">TOS</th><th class="r">X CO₂</th><th class="r">X H₂</th><th class="r">S CO</th><th class="r">Y CO</th><th class="r">S C1</th><th class="r">S C2–Cn</th><th class="r">S 差減</th><th class="r">S C5–C7</th><th class="r">S C8–C16</th><th class="r">S C16+</th><th class="r">Y C5–C7</th><th class="r">Y C8–C16</th><th class="r">Y C16+</th><th class="r">氣相碳 %</th><th>標記</th><th></th></tr></thead><tbody>${rs.map((r, i) => { const s = runSum(r); return `<tr class="click${state.curRun === i ? ' cur' : ''}" data-load="${i}"><td>${esc(r.name)}</td><td class="r mono">${esc(r.cond.T)}</td><td class="r mono">${esc(r.cond.P)}</td><td class="r mono">${esc(r.cond.GHSV)}</td><td class="r mono">${esc(r.cond.TOS ?? '')}</td>${['Xco2', 'Xh2', 'Sco', 'Yco', 'SC1', 'SC2n', 'Srest', 'S57', 'S816', 'S16p', 'Y57', 'Y816', 'Y16p', 'carbonGas'].map((k) => `<td class="r mono">${f2(s[k])}</td>`).join('')}<td>${s.Xh2 > s.Xh2Max + 1e-9 ? '<span class="pill b">H₂ 超過上限</span>' : ''}</td><td><button type="button" class="linkbtn" data-rdel="${i}" aria-label="刪除 ${esc(r.name)}">×</button></td></tr>`; }).join('')}</tbody>`;
   }
   function focusKey() {
     const a = document.activeElement; if (!a || a === document.body) return null;
@@ -576,12 +620,19 @@ td.nowrap { white-space: nowrap; }
   function renderModesOnly() { const F = state.flows, ratio = F.co2 > 0 ? F.h2 / F.co2 : NaN; const b = $('#flowModes b'); if (b) b.textContent = f2(ratio); }
 
   // ---------- run snapshots ----------
-  function snapRes() {
-    return { Xco2: R.Xco2, Xh2: R.Xh2, Xh2Max: R.Xh2Max, Sco: R.Sco, Yco: R.Yco, C1: R.groups.C1, C2C4: R.groups.C2C4, Srest: R.Srest, Sc816: R.Sc816, Yc816: R.Yc816, carbonGas: R.carbonGas, restLabel: R.restLabel, Yrest: R.Yrest, YC1: R.groups.YC1, YC2C4: R.groups.YC2C4,
-      hc: R.hc.map((x) => ({ name: x.name, n: x.n, fout: x.fout, Y: x.Y, S: x.S })), Fout: R.Fout };
+  // summary numbers on the total-carbon basis (CO included, sums to 100 %)
+  function sumObj(x) {
+    const cut = (k) => x.cuts ? x.cuts.find((c) => c.key === k) : null;
+    const cS = (k) => { const c = cut(k); return c && c.frac != null ? c.Stot : null; }, cY = (k) => { const c = cut(k); return c && c.frac != null ? c.Y : null; };
+    const g = x.groups || {};
+    return { Xco2: x.Xco2, Xh2: x.Xh2, Xh2Max: x.Xh2Max, Sco: x.Sco, Yco: x.Yco, SC1: g.C1t, SC2n: g.C2C4t, Srest: x.SrestTot, S57: cS('c57'), S816: cS('c816'), S16p: cS('c16p'),
+      Ssum: x.Sco + (g.C1t || 0) + (g.C2C4t || 0) + x.SrestTot, YC1: g.YC1, YC2n: g.YC2C4, Yrest: x.Yrest, Y57: cY('c57'), Y816: cY('c816'), Y16p: cY('c16p'), carbonGas: x.carbonGas, restLabel: x.restLabel, Fout: x.Fout };
   }
-  const RUNHEAD = ['Name', 'T (°C)', 'P (bar)', 'GHSV', 'TOS (h)', 'F_H2,in', 'F_CO2,in', 'F_out', 'CO2 conv. (%)', 'H2 conv. (%)', 'H2 conv. max (%)', 'CO yield (%)', 'CO sele. (%)', 'Sel. C1 (%)', 'Sel. C2-Cn (%)', 'Sel. rest (%)', 'Rest label', 'Sel. C8-C16 (%)', 'C8-C16 in liq. (%)', 'Yield C1 (%)', 'Yield C2-Cn (%)', 'Yield rest (%)', 'Yield C8-C16 (%)', 'Gas carbon recovery (%)'];
-  const runRow = (r) => [r.name, r.cond.T, r.cond.P, r.cond.GHSV, r.cond.TOS, r.flows.h2, r.flows.co2, +(+r.res.Fout).toFixed(3), r.res.Xco2, r.res.Xh2, r.res.Xh2Max, r.res.Yco, r.res.Sco, r.res.C1, r.res.C2C4, r.res.Srest, r.res.restLabel, r.res.Sc816, r.liqC816, r.res.YC1, r.res.YC2C4, r.res.Yrest, r.res.Yc816, r.res.carbonGas].map((v) => (typeof v === 'number' && isFinite(v) ? +v.toFixed(4) : v ?? ''));
+  function snapRes() { return Object.assign(sumObj(R), { hc: R.hc.map((x) => ({ name: x.name, n: x.n, fout: x.fout, Y: x.Y, S: x.S, Stot: x.Stot })) }); }
+  // a saved run is recomputed from its own stored inputs, so old runs follow the same basis as new ones
+  const runSum = (r) => { const x = runRes(r); return x ? sumObj(x) : r.res; };
+  const RUNHEAD = ['Name', 'T (°C)', 'P (bar)', 'GHSV', 'TOS (h)', 'F_H2,in', 'F_CO2,in', 'F_out', 'CO2 conv. (%)', 'H2 conv. (%)', 'H2 conv. max (%)', 'CO yield (%)', 'CO sele. (%)', 'Sel. C1 (%)', 'Sel. C2-Cn (%)', 'Sel. rest (%)', 'Rest label', 'Sel. C5-C7 (%)', 'Sel. C8-C16 (%)', 'Sel. C16+ (%)', 'Sel. sum (%)', 'C5-C7 in rest (%)', 'C8-C16 in rest (%)', 'C16+ in rest (%)', 'Yield C1 (%)', 'Yield C2-Cn (%)', 'Yield rest (%)', 'Yield C5-C7 (%)', 'Yield C8-C16 (%)', 'Yield C16+ (%)', 'Gas carbon recovery (%)'];
+  const runRow = (r) => { const s = runSum(r); return [r.name, r.cond.T, r.cond.P, r.cond.GHSV, r.cond.TOS, r.flows.h2, r.flows.co2, s.Fout == null ? '' : +(+s.Fout).toFixed(3), s.Xco2, s.Xh2, s.Xh2Max, s.Yco, s.Sco, s.SC1, s.SC2n, s.Srest, s.restLabel, s.S57, s.S816, s.S16p, s.Ssum, r.liq57, r.liqC816, r.liq16p, s.YC1, s.YC2n, s.Yrest, s.Y57, s.Y816, s.Y16p, s.carbonGas].map((v) => (typeof v === 'number' && isFinite(v) ? +v.toFixed(4) : v ?? '')); };
 
   // ---------- events ----------
   const NUMF = { cT: ['cond', 'T'], cP: ['cond', 'P'], cG: ['cond', 'GHSV'], cTOS: ['cond', 'TOS'], fH2: ['flows', 'h2'], fCO2: ['flows', 'co2'], fOut: ['flows', 'out'], fIS: ['flows', 'is'] };
@@ -589,7 +640,8 @@ td.nowrap { white-space: nowrap; }
     if (figInput(e.target)) return;
     const t = e.target, key = t.id || (t.dataset && t.dataset.mf ? t.dataset.mf + t.dataset.i : null);
     if (NUMF[t.id]) { const [g, k] = NUMF[t.id]; const v = parseFloat(t.value); state[g][k] = isFinite(v) ? v : ''; compute(); renderModesOnly(); renderPeaks(); renderResults(); save(key); return; }
-    if (t.id === 'liq') { const v = parseFloat(t.value); state.liqC816 = isFinite(v) ? v : ''; compute(); renderResults(); save(key); return; }
+    if (t.id === 'liq' || t.id === 'liq57' || t.id === 'liq16p') { const v = parseFloat(t.value), k = { liq: 'liqC816', liq57: 'liq57', liq16p: 'liq16p' }[t.id]; state[k] = isFinite(v) ? v : ''; compute(); renderResults(); save(key); return; }
+    if (t.id === 'h2c') { const v = parseFloat(t.value); state.h2Conc = isFinite(v) ? v : ''; compute(); renderPeaks(); renderResults(); save(key); return; }
     if (t.id === 'restLab') { state.restLabel = t.value; compute(); renderResults(); save(key); return; }
     if (t.id === 'paste') { state.paste = t.value; compute(); renderPeaks(); renderResults(); save(key); return; }
     if (t.dataset && t.dataset.mf && t.dataset.mf !== 'role') {
@@ -608,7 +660,7 @@ td.nowrap { white-space: nowrap; }
     const t = e.target;
     if (figClick(t)) return;
     const om = t.closest('[data-om]'); if (om) { state.flows.outMode = om.dataset.om; renderAll(true); return; }
-    const h2 = t.closest('[data-h2]'); if (h2) { state.h2Mode = h2.dataset.h2; if (h2.dataset.h2 === 'measured' && !state.method.some((m) => m.role === 'h2')) toast('實測模式需要在校正方法裡新增一列 H₂（角色選「H₂（實測）」）'); renderAll(true); return; }
+    const h2 = t.closest('[data-h2]'); if (h2) { if (h2.dataset.h2 === 'input' && state.h2Mode !== 'input' && (state.h2Conc === '' || state.h2Conc == null) && R && R.h2 && isFinite(R.h2.raw)) state.h2Conc = +R.h2.raw.toFixed(4); state.h2Mode = h2.dataset.h2; if (h2.dataset.h2 === 'measured' && !state.method.some((m) => m.role === 'h2')) toast('實測模式需要在校正方法裡新增一列 H₂（角色選「H₂（實測）」）'); renderAll(true); return; }
     const md = t.closest('[data-mdel]'); if (md) { const i = +md.dataset.mdel, gone = state.method[i]; state.method.splice(i, 1); renderAll(true); toast(`已刪除「${gone.name}」`, { label: '上一步', fn: () => step(-1) }); return; }
     if (t.id === 'btnAddRow') { state.method.push({ id: 'm' + Date.now().toString(36), name: '新成分', rt: 0, win: 0.15, f: 0.0001, role: 'hc', n: 1 }); renderAll(true); return; }
     if (t.id === 'btnResetMethod') { state.method = DEFAULT_METHOD(); state.ov = {}; renderAll(true); toast('已還原校正方法', { label: '上一步', fn: () => step(-1) }); return; }
@@ -619,11 +671,11 @@ td.nowrap { white-space: nowrap; }
     if (t.id === 'btnSave') {
       if (!R) { toast('先貼上數據'); return; }
       const c0 = state.cond, name = $('#runName').value.trim() || `${c0.T} °C · ${c0.P} bar${c0.TOS !== '' && c0.TOS != null ? ` · TOS ${c0.TOS} h` : ''} · #${state.runs.length + 1}`;
-      state.runs.push({ id: newId(), name, savedAt: Date.now(), cond: { ...state.cond }, flows: { ...state.flows }, h2Mode: state.h2Mode, liqC816: state.liqC816, restLabel: state.restLabel, method: JSON.parse(JSON.stringify(state.method)), paste: state.paste, ov: { ...state.ov }, res: snapRes() });
+      state.runs.push({ id: newId(), name, savedAt: Date.now(), cond: { ...state.cond }, flows: { ...state.flows }, h2Mode: state.h2Mode, h2Conc: state.h2Conc ?? '', liq57: state.liq57, liqC816: state.liqC816, liq16p: state.liq16p, restLabel: state.restLabel, method: JSON.parse(JSON.stringify(state.method)), paste: state.paste, ov: { ...state.ov }, res: snapRes() });
       state.curRun = state.runs.length - 1; $('#runName').value = ''; renderAll(); toast(`已存「${name}」`); return;
     }
     const rd = t.closest('[data-rdel]'); if (rd) { e.stopPropagation(); const i = +rd.dataset.rdel, gone = state.runs[i]; state.runs.splice(i, 1); if (state.curRun === i) state.curRun = null; renderAll(); toast(`已刪除「${gone.name}」`, { label: '上一步', fn: () => step(-1) }); return; }
-    const ld = t.closest('[data-load]'); if (ld) { const r = state.runs[+ld.dataset.load]; Object.assign(state, { cond: { ...r.cond }, flows: { ...r.flows }, h2Mode: r.h2Mode, liqC816: r.liqC816, restLabel: r.restLabel, method: JSON.parse(JSON.stringify(r.method)), paste: r.paste, ov: { ...r.ov }, curRun: +ld.dataset.load }); $('#runName').value = r.name; renderAll(true); toast(`已載入「${r.name}」；修改後再按「存成一筆」會存成新的一筆`); return; }
+    const ld = t.closest('[data-load]'); if (ld) { const r = state.runs[+ld.dataset.load]; Object.assign(state, { cond: { ...r.cond }, flows: { ...r.flows }, h2Mode: r.h2Mode, h2Conc: r.h2Conc ?? '', liq57: r.liq57 ?? '', liqC816: r.liqC816, liq16p: r.liq16p ?? '', restLabel: r.restLabel, method: JSON.parse(JSON.stringify(r.method)), paste: r.paste, ov: { ...r.ov }, curRun: +ld.dataset.load }); $('#runName').value = r.name; renderAll(true); toast(`已載入「${r.name}」；修改後再按「存成一筆」會存成新的一筆`); return; }
     if (t.id === 'btnCopy') { copyText(currentTSV(), '已複製目前結果，可直接貼到 Excel'); return; }
     if (t.id === 'btnCopyRuns') { copyText([RUNHEAD].concat(state.runs.map(runRow)).map((r) => r.join('\t')).join('\n'), '已複製已存的數據'); return; }
     if (t.id === 'btnExport') { exportXlsx(); return; }
@@ -636,10 +688,14 @@ td.nowrap { white-space: nowrap; }
   });
   function currentTSV() {
     if (!R) return '';
-    const head = ['', 'Yield (%)', 'Selectivity CO-free (%)', 'Selectivity total-C (%)', 'Outlet flow (mL/min)'];
+    const head = ['', 'Yield (%)', 'Selectivity incl. CO (%)', 'Selectivity CO-free (%)', 'Outlet flow (mL/min)'];
+    const coF = R.comps.filter((c) => c.role === 'co').reduce((t, c) => t + c.fout, 0);
     const lines = [['CO2 conversion (%)', f2(R.Xco2, 4)], ['H2 conversion (%)', f2(R.Xh2, 4)], ['CO yield (%)', f2(R.Yco, 4)], ['CO selectivity (%)', f2(R.Sco, 4)], [], head,
-      ...R.hc.map((x) => [x.name, f2(x.Y, 4), f2(x.S, 4), f2(x.Stot, 4), f2(x.fout, 4)]), [R.restLabel + ' (by difference)', f2(R.Yrest, 4), f2(R.Srest, 4), f2(R.SrestTot, 4), ''],
-      ...(R.Sc816 != null ? [['C8-C16', f2(R.Yc816, 4), f2(R.Sc816, 4), '', '']] : []), [], ['Gas carbon recovery (%)', f2(R.carbonGas, 4)], ['H2 conversion upper bound (%)', f2(R.Xh2Max, 4)]];
+      ['CO', f2(R.Yco, 4), f2(R.Sco, 4), '', f2(coF, 4)],
+      ...R.hc.map((x) => [x.name, f2(x.Y, 4), f2(x.Stot, 4), f2(x.S, 4), f2(x.fout, 4)]), [R.restLabel + ' (by difference)', f2(R.Yrest, 4), f2(R.SrestTot, 4), f2(R.Srest, 4), ''],
+      ...R.cuts.filter((c) => c.frac != null).map((c) => ['  ' + c.label.replace('–', '-') + ` (${f2(c.frac * 100, 2)}% of rest)`, f2(c.Y, 4), f2(c.Stot, 4), f2(c.S, 4), '']),
+      ['Sum', f2(R.Yco + R.hc.reduce((t, x) => t + x.Y, 0) + R.Yrest, 4), f2(R.Sco + R.hc.reduce((t, x) => t + x.Stot, 0) + R.SrestTot, 4), f2(R.hc.reduce((t, x) => t + x.S, 0) + R.Srest, 4), ''],
+      [], ['Gas carbon recovery (%)', f2(R.carbonGas, 4)], ['H2 conversion upper bound (%)', f2(R.Xh2Max, 4)]];
     return lines.map((r) => r.join('\t')).join('\n');
   }
   async function copyText(text, msg) {
@@ -671,7 +727,7 @@ td.nowrap { white-space: nowrap; }
   const TICK = 14.5, LAB = 15.5, VAL = 12.5, PH = 360;
   const SHAPES = ['circle', 'square', 'triUp', 'diamond', 'triDown', 'hex', 'star', 'plus'];
   const HC_PAL = ['#2a78d6', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#e34948', '#8a5a00', '#5d6bd8'];
-  const DEF_COL = { 'sp:CO': '#eb6834', 'sp:rest': '#4a3aa7', 'sp:c816': '#7e3fa0', 'sp:restOther': '#b3aee6', 'm:Xco2': '#121615', 'm:Xh2': '#7a827e', 'm:carbonGas': '#0f8a8a', 'm:SC2n': '#6f8f1f' };
+  const DEF_COL = { 'sp:CO': '#eb6834', 'sp:rest': '#4a3aa7', 'sp:c57': '#c27bb8', 'sp:c816': '#7e3fa0', 'sp:c16p': '#2e2160', 'sp:restOther': '#b3aee6', 'm:Xco2': '#121615', 'm:Xh2': '#7a827e', 'm:carbonGas': '#0f8a8a', 'm:SC2n': '#6f8f1f' };
   const SUBS = '₀₁₂₃₄₅₆₇₈₉';
   const chem = (s) => (/^(C\d*H\d+|CO2?|H2|O2|N2)$/.test(String(s)) ? String(s).replace(/\d/g, (d) => SUBS[+d]) : String(s));
   const isNum = (v) => v !== '' && v != null && isFinite(+v);
@@ -839,10 +895,10 @@ td.nowrap { white-space: nowrap; }
     const out = [{ key: 'Xco2', label: L.Xco2, ck: 'm:Xco2' }, { key: 'Xh2', label: L.Xh2, ck: 'm:Xh2' }, { key: 'Sco', label: L.Sco, ck: 'sp:CO' }];
     hcs.forEach((h) => out.push({ key: 'S:' + h.name, label: L.S(chem(h.name)), ck: 'sp:' + h.name }));
     if (multi2) out.push({ key: 'SC2n', label: L.S(c2), ck: 'm:SC2n' });
-    out.push({ key: 'Srest', label: L.S(restLab), ck: 'sp:rest' }, { key: 'Sc816', label: L.S('C8–C16'), ck: 'sp:c816' }, { key: 'Yco', label: L.Yco, ck: 'y:sp:CO' });
+    out.push({ key: 'Srest', label: L.S(restLab), ck: 'sp:rest' }, { key: 'Sc57', label: L.S('C5–C7'), ck: 'sp:c57' }, { key: 'Sc816', label: L.S('C8–C16'), ck: 'sp:c816' }, { key: 'Sc16p', label: L.S('C16+'), ck: 'sp:c16p' }, { key: 'Yco', label: L.Yco, ck: 'y:sp:CO' });
     hcs.forEach((h) => out.push({ key: 'Y:' + h.name, label: L.Y(chem(h.name)), ck: 'y:sp:' + h.name }));
     if (multi2) out.push({ key: 'YC2n', label: L.Y(c2), ck: 'y:m:SC2n' });
-    out.push({ key: 'Yrest', label: L.Y(restLab), ck: 'y:sp:rest' }, { key: 'Yc816', label: L.Y('C8–C16'), ck: 'y:sp:c816' }, { key: 'carbonGas', label: L.carbonGas, ck: 'm:carbonGas' });
+    out.push({ key: 'Yrest', label: L.Y(restLab), ck: 'y:sp:rest' }, { key: 'Yc57', label: L.Y('C5–C7'), ck: 'y:sp:c57' }, { key: 'Yc816', label: L.Y('C8–C16'), ck: 'y:sp:c816' }, { key: 'Yc16p', label: L.Y('C16+'), ck: 'y:sp:c16p' }, { key: 'carbonGas', label: L.carbonGas, ck: 'm:carbonGas' });
     out.forEach((m) => { m.grp = metGrp(m.key); });
     return out;
   }
@@ -851,8 +907,11 @@ td.nowrap { white-space: nowrap; }
     switch (key) {
       case 'Xco2': return fin(r.Xco2); case 'Xh2': return fin(r.Xh2); case 'Sco': return fin(r.Sco); case 'Yco': return fin(r.Yco);
       case 'Srest': return fin(cf ? r.Srest : r.SrestTot); case 'Yrest': return fin(r.Yrest);
-      case 'Sc816': return r.Sc816 == null ? null : fin(cf ? r.Sc816 : (r.Yc816 / r.Xco2) * 100);
-      case 'Yc816': return r.Yc816 == null ? null : fin(r.Yc816);
+      case 'Sc57': case 'Sc816': case 'Sc16p': case 'Yc57': case 'Yc816': case 'Yc16p': {
+        const c = r.cuts ? r.cuts.find((q) => q.key === key.slice(1)) : null;
+        if (!c || c.frac == null) return null;
+        return fin(key[0] === 'Y' ? c.Y : cf ? c.S : c.Stot);
+      }
       case 'carbonGas': return fin(r.carbonGas);
       case 'SC2n': return fin(r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + (cf ? x.S : x.Stot), 0));
       case 'YC2n': return fin(r.hc.filter((x) => x.n >= 2).reduce((t, x) => t + x.Y, 0));
@@ -872,8 +931,13 @@ td.nowrap { white-space: nowrap; }
     if (!cf) segs.push({ ck: 'sp:CO', label: 'CO', v: (r) => r.res.Sco });
     hcs.forEach((h) => segs.push({ ck: 'sp:' + h.name, label: chem(h.name), v: (r) => { const x = r.res.hc.find((q) => q.name === h.name); return x ? (cf ? x.S : x.Stot) : 0; } }));
     if (F.split816) {
-      segs.push({ ck: 'sp:c816', label: 'C8–C16', v: (r) => (r.frac == null ? 0 : restS(r) * r.frac) });
-      segs.push({ ck: 'sp:restOther', label: L.other(restLab), v: (r) => restS(r) * (r.frac == null ? 1 : 1 - r.frac) });
+      const cutOf = (r, k) => (r.res.cuts ? r.res.cuts.find((q) => q.key === k) : null);
+      ['c57', 'c816', 'c16p'].forEach((k) => {
+        const lab = { c57: 'C5–C7', c816: 'C8–C16', c16p: 'C16+' }[k];
+        if (rows.some((r) => { const c = cutOf(r, k); return c && c.frac != null; })) segs.push({ ck: 'sp:' + k, label: lab, v: (r) => { const c = cutOf(r, k); return c && c.frac != null ? restS(r) * c.frac : 0; } });
+      });
+      const left = (r) => { const f = (r.res.cuts || []).filter((c) => c.frac != null).reduce((t, c) => t + c.frac, 0); return Math.max(0, 1 - f); };
+      if (rows.some((r) => left(r) > 1e-6)) segs.push({ ck: 'sp:restOther', label: L.other(restLab), v: (r) => restS(r) * left(r) });
     } else segs.push({ ck: 'sp:rest', label: restLab, v: restS });
     // right-axis overlays: any conversion / selectivity / yield metric, in catalogue order (Xco2, Xh2 first → circle, square as before)
     const ovCat = metricCat(hcs, restLab, L), on = F.conv || {};
@@ -899,9 +963,11 @@ td.nowrap { white-space: nowrap; }
     const showS = F.distVal !== 'Y', showY = F.distVal !== 'S';
     let cats = [{ ck: 'sp:CO', label: 'CO', S: cf ? null : r.Sco, Y: r.Yco }];
     r.hc.slice().sort((a, b) => a.n - b.n).forEach((x) => cats.push({ ck: 'sp:' + x.name, label: chem(x.name), S: cf ? x.S : x.Stot, Y: x.Y }));
-    if (F.split816 && src.frac != null) {
-      cats.push({ ck: 'sp:c816', label: 'C8–C16', S: restS * src.frac, Y: r.Yrest * src.frac });
-      cats.push({ ck: 'sp:restOther', label: L.other(r.restLabel), S: restS * (1 - src.frac), Y: r.Yrest * (1 - src.frac) });
+    const cuts = (r.cuts || []).filter((c) => c.frac != null);
+    if (F.split816 && cuts.length) {
+      cuts.forEach((c) => cats.push({ ck: 'sp:' + c.key, label: c.label, S: restS * c.frac, Y: r.Yrest * c.frac }));
+      const left = 1 - cuts.reduce((t, c) => t + c.frac, 0);
+      if (left > 1e-6) cats.push({ ck: 'sp:restOther', label: L.other(r.restLabel), S: restS * left, Y: r.Yrest * left });
     } else cats.push({ ck: 'sp:rest', label: r.restLabel, S: restS, Y: r.Yrest });
     cats = cats.filter((c) => (showS && c.S != null) || (showY && c.Y != null));
     return { L, src, cats, showS, showY, cf, hcDef };
@@ -1156,7 +1222,7 @@ td.nowrap { white-space: nowrap; }
     renderFigTabs();
     $('#figCtl1').innerHTML = `<div class="field">種類 ${segH('ftype', FTYPES, F.type)}</div><div class="field">標籤語言 ${segH('flang', [['zh', '中文'], ['en', 'English']], F.lang)}</div>`;
     const basis = `<div class="field">選擇性基準 ${segH('fbasis', [['tot', '含 CO'], ['cofree', '扣除 CO']], F.basis)}<span class="muted small">${F.basis === 'cofree' ? '烴類合計 = 100%（你 Excel 的算法）' : 'CO + 烴類合計 = 100%'}</span></div>`;
-    const split = `<label class="field" for="fSplit"><input type="checkbox" id="fSplit"${F.split816 ? ' checked' : ''}> 差減項拆成 C8–C16 與其他（依液相比例）</label>`;
+    const split = `<label class="field" for="fSplit"><input type="checkbox" id="fSplit"${F.split816 ? ' checked' : ''}> 差減項拆成 C5–C7 / C8–C16 / C16+（依液相比例）</label>`;
     let c2 = '';
     if (F.type === 'stack') {
       const S = stackSpec(F);
