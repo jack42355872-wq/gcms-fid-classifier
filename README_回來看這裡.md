@@ -86,9 +86,10 @@ gcms-web/
 
 ## 工作區（2026-10-18 起）與學長五個工具的維護
 
-- `/` 是分頁工作區（`static/suite/shell.html`），`/fid` 是 FID 分類頁；學長的五個工具是 `static/suite/*.html`，不是手寫的，是從他的單檔 `index.html` 用 `tools/build_suite.py` 產生的。
+- `/` 是分頁工作區（`static/suite/shell.html`），`/fid` 是 FID 分類頁；學長的工具（現在六個）是 `static/suite/*.html`，不是手寫的，是從他的單檔 `index.html`（或單獨傳來的模組）用 `tools/build_suite.py` 產生的。
 - **使用成本為零 token**：站上沒有任何 AI／Claude 呼叫，伺服器沒有 API 金鑰。`tools/audit_suite.py` 把關這件事，每次重建會自動跑，也可單獨跑 `python tools/audit_suite.py`；它會擋 AI API 字樣、`claude.<其他能力>`、不在白名單的外部網域、多餘的網路呼叫。
 - 學長出新版時：`python tools/build_suite.py "<新的 index.html 路徑>"`。我們對他的程式只有四個小 patch（寫在 build_suite.py 的 PATCHES），對不上會直接報錯，代表他改到那段了，要人看。
 - 三個函式庫（SheetJS、ExcelJS、Plotly）放在 `static/vendor/`，版本與雜湊記在 `VERSIONS.txt`，不再連外部 CDN。升級要換檔案並更新 VERSIONS.txt。
-- 五個工具的數據存在使用者自己的瀏覽器（IndexedDB），不在伺服器；總覽頁有備份／還原，並顯示上次備份距今幾天。
+- 六個工具的數據存在使用者自己的瀏覽器（IndexedDB），不在伺服器；總覽頁有備份／還原，並顯示上次備份距今幾天。
+- **第六個工具「液相回收率計算」（2026-11-02 加入）**：學長只傳了這一個單檔 html（不在他的 index.html 裡），所以用 `python -I tools/build_suite.py --module rec "<單檔.html>"` 產生 `static/suite/rec.html`，原檔存在 `tools/src/rec.html`。它沒有任何 patch，只有 `localStorage` 被改接共用儲存（鍵 `rec-in`，備份會收）。他改版再傳來時，同一行指令重跑即可。整包重建（用他的 index.html）不會動到它。外殼要登記的地方：`shell.html` 的 `TOOLS`、`summaries()`、還原確認的 `has` 清單，以及幾處「幾個工具」的文字。
 - 還原整件事：`git revert 8fc788b` 之後的提交即可回到只有 FID 分類的版本（`/` 會變回分類頁）。

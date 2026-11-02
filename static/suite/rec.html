@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><script src="bridge.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>液相回收率計算</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>[hidden]{display:none!important}
+[hidden]{display:none!important}img{max-width:100%}
+
+/* Layout: sticky tab bar; run list on the left, run sheet (conditions, collection windows with worked numbers, GC table and chart) on the right; stacks to one column on phones. */
+:root{
+  --bg:#EEF2F4; --surface:#FFFFFF; --sunk:#F5F8F9; --ink:#14212A; --muted:#566770; --line:#D3DCE1; --line2:#B6C3CA;
+  --accent:#1D6A8A; --accent-ink:#FFFFFF; --accent-soft:#DCEBF2;
+  --good:#2C7A4B; --warn:#9A6414; --bad:#B03A2E;
+  --s-co:#C8553D; --s-ch4:#2F6FB8; --s-c2:#2E9A6B; --s-c3:#D99A1E; --s-c2e:#7FC4A5; --s-c3e:#EAC46E; --s-rest:#5A4AA8; --s-line:#14212A;
+  --f-display:"Barlow Condensed","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1317; --surface:#151F26; --sunk:#111A20; --ink:#E2E9ED; --muted:#91A2AC; --line:#283741; --line2:#3B4D58;
+    --accent:#5DB3D6; --accent-ink:#0A1216; --accent-soft:#1A3340;
+    --good:#6BC48E; --warn:#E0B04F; --bad:#F0857B;
+    --s-co:#E07A62; --s-ch4:#6FA3E0; --s-c2:#5CC496; --s-c3:#E8B24A; --s-c2e:#3F8A69; --s-c3e:#A88334; --s-rest:#9A8BE6; --s-line:#E2E9ED; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1317; --surface:#151F26; --sunk:#111A20; --ink:#E2E9ED; --muted:#91A2AC; --line:#283741; --line2:#3B4D58;
+  --accent:#5DB3D6; --accent-ink:#0A1216; --accent-soft:#1A3340;
+  --good:#6BC48E; --warn:#E0B04F; --bad:#F0857B;
+  --s-co:#E07A62; --s-ch4:#6FA3E0; --s-c2:#5CC496; --s-c3:#E8B24A; --s-c2e:#3F8A69; --s-c3e:#A88334; --s-rest:#9A8BE6; --s-line:#E2E9ED; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14.5px;line-height:1.65;padding-bottom:48px}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-top:10px}
+.kicker{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;color:var(--muted)}
+h1{font-family:var(--f-display);font-weight:700;font-size:25px;line-height:1.1;margin:0}
+#status{margin-left:auto;font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin-top:4px}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:0 0 auto;font-family:var(--f-display);font-weight:600;font-size:17px;letter-spacing:.03em;color:var(--muted);background:none;border:0;border-bottom:3px solid transparent;padding:7px 12px 6px;cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.panel{padding-block:20px}
+h2{font-family:var(--f-display);font-weight:700;font-size:26px;line-height:1.15;margin:0 0 6px;text-wrap:balance}
+h3{font-size:15.5px;margin:22px 0 8px;font-weight:700}
+p{margin:0 0 10px;max-width:72ch}
+.muted{color:var(--muted)} .note{font-size:13px;color:var(--muted)}
+code,.mono{font-family:var(--f-mono);font-size:.92em}
+.banner{border:1px solid var(--warn);color:var(--ink);background:var(--surface);border-radius:6px;padding:8px 12px;font-size:13.5px;margin-top:14px}
+.layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:820px){.layout{grid-template-columns:minmax(0,1fr)}}
+.runlist{display:grid;gap:6px}
+.runlist button.run{display:block;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:9px 12px;cursor:pointer}
+.runlist button.run[aria-current="true"]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.runlist .rn{font-weight:700;display:block}
+.runlist .rm{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+.btn{font:inherit;font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:5px;padding:5px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.small{padding:2px 8px;font-size:12.5px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.fields label,.fl{display:block;font-size:12.5px;color:var(--muted)}
+input[type=number],input[type=text],input[type=date],select,textarea{display:block;width:100%;margin-top:2px;font-family:var(--f-mono);font-size:14px;padding:6px 8px;color:var(--ink);background:var(--sunk);border:1px solid var(--line2);border-radius:5px}
+textarea{font-family:var(--f-body);min-height:56px;resize:vertical}
+input.name{font-family:var(--f-display);font-weight:700;font-size:22px;background:transparent;border-color:transparent;padding:2px 4px}
+input.name:hover{border-color:var(--line2)}
+.derived{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:10px;font-family:var(--f-mono);font-size:12.5px;color:var(--muted)}
+.derived b{color:var(--ink);font-weight:500}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;color:var(--muted);text-align:left;font-weight:500;padding:7px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td input{margin-top:0;padding:4px 6px;font-size:13px;min-width:62px}
+td input.wide{min-width:140px}
+.ed{min-width:640px}
+.win{border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-top:10px;background:var(--sunk)}
+.win h4{margin:0 0 6px;font-size:14.5px}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px 14px;margin-bottom:8px}
+.kv div{min-width:0}
+.kv .k{font-size:11.5px;color:var(--muted);display:block}
+.kv .v{font-family:var(--f-display);font-weight:700;font-size:22px;line-height:1.15}
+.kv .v small{font-family:var(--f-mono);font-size:12px;font-weight:400;color:var(--muted)}
+.calc{font-family:var(--f-mono);font-size:12.5px;line-height:1.75;overflow-x:auto;white-space:pre;border-top:1px dashed var(--line2);padding-top:8px;margin-top:4px;color:var(--ink)}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:11.5px;padding:0 7px;border-radius:10px;border:1px solid currentColor;white-space:nowrap}
+.p-good{color:var(--good)} .p-warn{color:var(--warn)} .p-bad{color:var(--bad)} .p-mut{color:var(--muted)}
+.chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.ax{stroke:var(--line2);stroke-width:1} .gd{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+.tx{font:11px var(--f-mono);fill:var(--muted)}
+.empty{border:1px dashed var(--line2);border-radius:8px;padding:24px;text-align:center;color:var(--muted)}
+.confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.rc{grid-template-columns:minmax(260px,330px) minmax(0,1fr)}
+@media (max-width:820px){.rc{grid-template-columns:minmax(0,1fr)}}
+.fields.one{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+.chk{display:flex!important;align-items:center;gap:6px;grid-column:1/-1}
+.chk input{width:auto;display:inline-block;margin:0}
+.out .kv .v{font-size:24px}
+.calc{white-space:pre-wrap}
+.small{font-size:12.5px}
+textarea#iDist{font-family:var(--f-mono);font-size:13px;min-height:120px}
+</style></head><body><header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <span class="kicker">ASF × Peng–Robinson · 冷阱閃蒸</span>
+      <h1>液相回收率計算</h1>
+      <span id="status">就緒</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="分頁">
+      <button role="tab" data-tab="calc" aria-selected="true">計算</button>
+      <button role="tab" data-tab="how" aria-selected="false">方法與假設</button>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <section class="panel" id="p-calc">
+    <div class="layout rc">
+      <div class="sheet">
+        <h3 style="margin-top:0">反應條件</h3>
+        <div class="fields one">
+          <label for="iCO2">CO₂ 實際進料 (sccm)<input id="iCO2" type="number" step="any" value="266.7"></label>
+          <label for="iH2">H₂ 實際進料 (sccm)<input id="iH2" type="number" step="any" value="933.3"></label>
+          <label for="iVm">MFC 標定（莫耳體積）<select id="iVm"><option value="22.414">0°C · 22.414 L/mol</option><option value="24.055">20°C · 24.055</option><option value="24.465">25°C · 24.465</option></select></label>
+        </div>
+        <h3>冷阱</h3>
+        <div class="fields one">
+          <label for="iP">壓力 (bar)<input id="iP" type="number" step="any" value="20"></label>
+          <label for="iT">溫度 (°C)<input id="iT" type="number" step="any" value="25"></label>
+        </div>
+        <h3>GC 結果（碳基準選擇性）</h3>
+        <div class="fields one">
+          <label for="iX">CO₂ 轉化率 X (%)<input id="iX" type="number" step="any" value="40"></label>
+          <label for="iXw">水量法轉化率 (%)<input id="iXw" type="number" step="any" placeholder="選填，有填就用它"></label>
+          <label for="iSCO">S_CO (%)<input id="iSCO" type="number" step="any" value="10"></label>
+          <label for="iSCH4">S_CH₄ (%)<input id="iSCH4" type="number" step="any" value="15"></label>
+          <label for="iSC24">S_C₂₋₄ (%)<input id="iSC24" type="number" step="any" value="15"></label>
+          <label for="iSC5">S_C₅₊ (%)<input id="iSC5" type="number" step="any" value="60"></label>
+          <label class="chk"><input id="iAuto" type="checkbox" checked> S_C₅₊ 用差減（100 − 其餘）</label>
+          <label for="iA">鏈成長機率 α<input id="iA" type="number" step="0.01" value="0.74"></label>
+        </div>
+        <h3>模型</h3>
+        <div class="fields one">
+          <label for="iModel">純物質蒸汽壓<select id="iModel"><option value="pr">PR 方程式</option><option value="a7">PR + 表 A.7（Antoine，C5–C18）</option></select></label>
+        </div>
+        <h3>實際收油（選填）</h3>
+        <div class="fields one">
+          <label for="iOil">收到的油 (g)<input id="iOil" type="number" step="any" placeholder="例如 2"></label>
+          <label for="iHr">收集時間 (h)<input id="iHr" type="number" step="any" placeholder="例如 12"></label>
+          <label for="iL8">油中 C₈₊ 碳比例 (%)<input id="iL8" type="number" step="any" placeholder="留空用模型值"></label>
+        </div>
+      </div>
+      <div class="sheet out">
+        <div id="warn" class="banner" hidden></div>
+        <div class="kv" id="kv"></div>
+        <div class="calc" id="steps"></div>
+        <h3>回收率 vs α（目前條件）</h3>
+        <div class="chart" id="chart"></div>
+        <h3>各碳數去向</h3>
+        <div class="tw"><table id="tbl"></table></div>
+        <h3>冷阱進料（乾基）</h3>
+        <div class="derived" id="gas"></div>
+        <h3>α 校正（液相碳數分佈）</h3>
+        <p class="muted small">貼上 GC-MS 液相各碳數的濃度，一行一個碳數，例如「C10 4.2」或從 Excel 複製兩欄。只填有偵測到的碳數。修正時會用上方的反應條件與冷阱條件計算各碳數的進液相比例。</p>
+        <div class="fields one" style="margin-bottom:8px">
+          <label for="iBasis">數值基準<select id="iBasis"><option value="mass">面積法濃度 %（視為質量 %）</option><option value="mol">莫耳 %</option></select></label>
+        </div>
+        <label class="fl" for="iDist">液相碳數分佈<textarea id="iDist" rows="7" placeholder="C10 4.2&#10;C11 6.5&#10;C12 7.9"></textarea></label>
+        <div id="fixOut" style="margin-top:10px"></div>
+        <div class="chart" id="fixChart"></div>
+      </div>
+    </div>
+  </section>
+  <section class="panel" id="p-how" hidden>
+    <h2>方法與假設</h2>
+    <p><b>1. 出口氣體組成。</b>以 CO₂ 進料 F、轉化率 X 與各選擇性算出各產物的碳流量。H₂ 消耗：RWGS 每轉化 1 mol CO₂ 用 1 mol H₂；CO 變成 –CH₂– 再用 2 mol H₂（C₂₊ 產物）；甲烷化再用 3 mol H₂。水在冷阱另成水相，不列入。C₂₋₄ 以丙烷代表。</p>
+    <p><b>2. C₅₊ 組成。</b>各碳數的分子數比例 ∝ α^(n−1)（n = 5–60），歸一化使 Σ n·z_n = Y_C，Y_C = C₅₊ 碳流量 ÷ 冷阱出口乾氣莫耳流量。</p>
+    <p><b>3. 氣液平衡。</b>Peng–Robinson 狀態方程式（ω &gt; 0.49 用 Robinson–Peng 修正 κ），van der Waals 混合規則；k_ij：CO₂–烴 0.12，CH₄、CO–C₅₊ 0.03，其餘 0。K_i = φ_i^L / φ_i^V，以 Rachford–Rice 求氣相分率 V，逐次代入至 K 收斂。選「PR + 表 A.7」時，C5–C18 的 K 值乘上 P_sat(Antoine) ÷ P_sat(PR)。</p>
+    <p><b>4. 由實際收油反推。</b>填了實際收油時，求 C₅₊ 碳流量 c 使 c × R(c) 等於收油的碳流量（R 會隨 c 改變，用二分法求自洽解），再以 S_C₅₊ = c ÷ 轉化的碳求出自洽選擇性。有填水量法轉化率時，轉化的碳一律用水量法計算。</p>
+    <p><b>α 校正。</b>液相組成不等於生成分佈：各碳數進液相的比例 f_n 不同，輕端被冷阱放走，直接回歸會高估 α。修正方式：先用液相數據回歸出初值 α，以此計算各碳數的 f_n，把液相質量分率除以 f_n 還原成生成分佈，再回歸新的 α，反覆直到 α 變化小於 10⁻⁴。f_n &lt; 10% 的碳數誤差太大，不納入修正回歸。回歸式與論文式 (2.19) 相同：ln(W_n/n) 對 (n−1) 的斜率為 ln α。</p>
+    <p><b>5. 回收率。</b>R = (1 − V)·Σ n·x_n ÷ Y_C（碳基準）。預期收油量以 –CH₂–（14.03 g/mol C）換算。</p>
+    <p><b>6. 收集效率。</b>理想回收率 R_理想 用 GC 的 S_C₅₊ 算出生成量與 Y_C，再做 PR 閃蒸。實際回收率 R_實際 = 實際收油碳 ÷ GC 生成的 C₅₊ 碳。收集效率 η = R_實際 ÷ R_理想，等於實際收油 ÷ 理想收油。η 接近 1 代表冷阱接近平衡；η 偏低代表平衡模型沒算到的損失：管線滯留、霧滴夾帶、排液時閃蒸，或收集時段沒放乾淨。η 大於 1 通常是 S_C₅₊ 低估，或這段收到的油含有前一段留在管線的液體。S_C₅₊ 用差減值時含 C₄、烯烴與積碳，生成量會高估，η 會偏低，看趨勢比看絕對值可靠。</p>
+    <p><b>8. C₅–C₇ 估算。</b>TCD 只量到 C₄、GC-MS 只量 C₈₊，C₅–C₇ 沒有直接量測，以單一 α 外推：S_C₅–C₇ = S_C₅₊（差減）× w₅₋₇，w₅₋₇ = 1 − α³(8 − 7α) ÷ (5 − 4α)。括號範圍是 α ± 0.04。差減值把差減項全當成 C₅₊，是上限；有填收油時另列由收油自洽反推的值，是下限。α 請用經過校正或只取 C₁₁–C₂₀ 回歸的值。</p>
+    <p><b>7. C₈₊ 基準。</b>GC-MS 做了 solvent cut，只量得到 C₈₊，所以另外列出 C₈₊ 的回收率。C₈₊ 生成量 = C₅₊ 生成量 × w₈₊，w₈₊ = α³(8 − 7α) ÷ (5 − 4α)（單一 α）。收到的 C₈₊ = 收油 × 液相中 C₈₊ 碳的比例，這個比例由同一個 PR 閃蒸算出（通常 90% 以上）。C₅₊ 與 C₈₊ 的 η 一起看：兩者都低，損失來自整體（轉化率高估、管線滯留）；只有 C₅₊ 低、C₈₊ 接近 1，損失集中在輕端。</p>
+    <p><b>物性。</b>C5–C20 臨界性質取 Poling 等人；C21–C60 用 Tsonopoulos 關聯式；C21 以上 ω 由 C10–C20 線性外插。</p>
+    <p><b>限制。</b>假設冷阱達平衡，不含霧滴夾帶損失；以正構烷烴代表全部 C₅₊；含氧化合物溶入水相的部分不計。S_C₅₊ 若用 GC 差減值，會包含未量到的 C₄、烯烴與積碳，回收率與預期油量都會偏高，建議改填較保守的 S_C₅₊。</p>
+  </section>
+</main>
+
+
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)};
+var R=8.314462618,SQ2=Math.SQRT2,NMAX=60;
+var GAS=[['H2',33.19,13.13e5,-0.216],['CO2',304.13,73.77e5,0.225],['CO',132.85,34.94e5,0.045],['CH4',190.56,45.99e5,0.011],['C3',369.83,42.48e5,0.152]];
+var TAB={5:[469.7,33.70,0.252],6:[507.6,30.25,0.300],7:[540.2,27.40,0.350],8:[568.7,24.90,0.399],9:[594.6,22.90,0.445],10:[617.7,21.10,0.490],11:[639.0,19.50,0.537],12:[658.0,18.20,0.576],13:[675.0,16.80,0.618],14:[693.0,15.70,0.644],15:[708.0,14.80,0.685],16:[723.0,14.00,0.718],17:[736.0,13.40,0.753],18:[747.0,12.90,0.800],19:[755.0,11.60,0.845],20:[768.0,11.10,0.865]};
+var ANT={5:[3.9892,1070.617,-40.454],6:[4.00266,1171.53,-48.784],7:[4.02832,1268.636,-56.199],8:[4.04867,1355.126,-63.633],9:[4.06245,1430.377,-71.355],10:[4.07857,1501.268,-78.67],11:[4.10164,1572.477,-85.128],12:[4.10549,1625.928,-92.839],13:[4.12829,1689.093,-98.866],14:[4.13735,1739.623,-105.62],15:[4.14935,1789.658,-111.86],16:[4.17312,1845.672,-117.05],17:[3.9273,1718.004,-138.13],18:[4.33209,2068.963,-111.93]};
+var NG=GAS.length,props=[],carb=[];
+GAS.forEach(function(g){props.push([g[1],g[2],g[3]]);carb.push(0)});
+for(var n=5;n<=NMAX;n++){var p;if(TAB[n])p=[TAB[n][0],TAB[n][1]*1e5,TAB[n][2]];else p=[959.98-Math.exp(6.81536-0.211145*Math.pow(n,2/3)),Math.exp(4.3398-0.315564*Math.pow(n,0.6))*1e5,0.49+0.0375*(n-10)];props.push(p);carb.push(n)}
+var NC=props.length,KIJ=[];
+for(var i=0;i<NC;i++){KIJ.push([]);for(var j=0;j<NC;j++){var k=0;if(i!==j){var hi=i>=NG,hj=j>=NG;if((i===1&&(hj||j===4))||(j===1&&(hi||i===4)))k=0.12;else if((i===3&&hj)||(j===3&&hi)||(i===2&&hj)||(j===2&&hi))k=0.03}KIJ[i].push(k)}}
+function psatCorr(n,T){return 1.88e3*Math.exp(-1.15*(n-8))*Math.exp((41.5+5*(n-8))*1000/R*(1/298.15-1/T))}
+function ab(T){var a=[],b=[];props.forEach(function(p){var w=p[2],kap=w>0.49?0.379642+1.48503*w-0.164423*w*w+0.016666*w*w*w:0.37464+1.54226*w-0.26992*w*w;var al=Math.pow(1+kap*(1-Math.sqrt(T/p[0])),2);a.push(0.45724*R*R*p[0]*p[0]/p[1]*al);b.push(0.07780*R*p[0]/p[1])});return{a:a,b:b}}
+function cubicRoots(c2,c1,c0){// x^3+c2x^2+c1x+c0
+  var q=(3*c1-c2*c2)/9,r=(9*c2*c1-27*c0-2*c2*c2*c2)/54,D=q*q*q+r*r,out=[];
+  if(D>0){var s=Math.cbrt(r+Math.sqrt(D)),t=Math.cbrt(r-Math.sqrt(D));out=[s+t-c2/3]}
+  else{var th=Math.acos(r/Math.sqrt(-q*q*q)),m=2*Math.sqrt(-q);out=[m*Math.cos(th/3)-c2/3,m*Math.cos((th+2*Math.PI)/3)-c2/3,m*Math.cos((th+4*Math.PI)/3)-c2/3]}
+  return out}
+function lnphi(x,T,P,ph,AB){var a=AB.a,b=AB.b,s=new Array(NC).fill(0),am=0,bm=0;
+  for(var i=0;i<NC;i++){if(!x[i])continue;bm+=x[i]*b[i];for(var j=0;j<NC;j++){if(!x[j])continue;var aij=Math.sqrt(a[i]*a[j])*(1-KIJ[i][j]);s[i]+=0;}}
+  for(i=0;i<NC;i++){var si=0;for(j=0;j<NC;j++){if(x[j])si+=x[j]*Math.sqrt(a[i]*a[j])*(1-KIJ[i][j])}s[i]=si;if(x[i])am+=x[i]*si}
+  var A=am*P/(R*T*R*T),B=bm*P/(R*T),rts=cubicRoots(-(1-B),A-3*B*B-2*B,-(A*B-B*B-B*B*B)).filter(function(z){return z>B});
+  var Z=ph==='V'?Math.max.apply(null,rts):Math.min.apply(null,rts),L=Math.log((Z+(1+SQ2)*B)/(Z+(1-SQ2)*B)),out=[];
+  for(i=0;i<NC;i++)out.push(b[i]/bm*(Z-1)-Math.log(Z-B)-A/(2*SQ2*B)*(2*s[i]/am-b[i]/bm)*L);
+  return{lp:out,Z:Z}}
+function rr(z,K){var f=function(V){var s=0;for(var i=0;i<z.length;i++)s+=z[i]*(K[i]-1)/(1+V*(K[i]-1));return s};
+  var lo=1e-6,hi=1-1e-14;if(f(hi)>0)return 1;for(var k=0;k<200;k++){var m=(lo+hi)/2;if(f(m)>0)lo=m;else hi=m}return(lo+hi)/2}
+var corrCache={};
+function prPsat(i,T,AB){var n=carb[i],p=psatCorr(n,T),x=new Array(NC).fill(0);x[i]=1;
+  for(var k=0;k<200;k++){var l=lnphi(x,T,p,'L',AB).lp[i],v=lnphi(x,T,p,'V',AB).lp[i],pn=p*Math.exp(l-v);if(!isFinite(pn))break;if(Math.abs(pn/p-1)<1e-10){p=pn;break}p=pn}return p}
+function corrFor(T,P,model,AB){var key=model+'|'+T;if(corrCache[key])return corrCache[key];var c=new Array(NC).fill(1);
+  if(model==='a7')for(var n in ANT){var i=NG+(+n-5),A=ANT[n],pa=Math.pow(10,A[0]-A[1]/(T+A[2]))*1e5,pp=prPsat(i,T,AB);if(isFinite(pp)&&pp>0)c[i]=pa/pp}
+  corrCache[key]=c;return c}
+function flash(z,T,P,model){var AB=ab(T),corr=corrFor(T,P,model,AB),K=[];
+  for(var i=0;i<NC;i++){if(i<NG){var p=props[i];K.push(p[1]/P*Math.exp(5.373*(1+p[2])*(1-p[0]/T)))}else K.push(psatCorr(carb[i],T)/P)}
+  var V=1,x=null;
+  for(var it=0;it<300;it++){V=rr(z,K);if(V>=1)return{V:1,x:null,K:K};
+    var xs=[],ys=[],sx=0,sy=0;for(i=0;i<NC;i++){var xi=z[i]/(1+V*(K[i]-1));xs.push(xi);ys.push(K[i]*xi);sx+=xi;sy+=K[i]*xi}
+    for(i=0;i<NC;i++){xs[i]/=sx;ys[i]/=sy}
+    var lL=lnphi(xs,T,P,'L',AB).lp,lV=lnphi(ys,T,P,'V',AB).lp,mx=0,Kn=[];
+    for(i=0;i<NC;i++){var kn=Math.exp(lL[i]-lV[i])*corr[i];Kn.push(kn);mx=Math.max(mx,Math.abs(Math.log(kn/K[i])))}
+    K=Kn;if(mx<1e-8)break}
+  V=rr(z,K);x=[];for(i=0;i<NC;i++)x.push(z[i]/(1+V*(K[i]-1)));return{V:V,x:x,K:K}}
+function feed(alpha,Yc,gas){var w=[],cw=0;for(var n=5;n<=NMAX;n++){var v=Math.pow(alpha,n-1);w.push(v);cw+=n*v}
+  var zh=w.map(function(v){return Yc*v/cw}),sh=zh.reduce(function(a,b){return a+b},0),sg=gas.reduce(function(a,b){return a+b},0);
+  return gas.map(function(g){return g/sg*(1-sh)}).concat(zh)}
+function recov(alpha,Yc,gas,T,P,model){var z=feed(alpha,Yc,gas),r=flash(z,T,P,model);if(!r.x)return{R:0,frac:null,z:z};
+  var L=1-r.V,s=0,frac=[];for(var i=NG;i<NC;i++){s+=carb[i]*r.x[i];frac.push(r.x[i]*L/z[i])}return{R:s*L/Yc,frac:frac,z:z}}
+function r8(res){if(!res||!res.frac)return 0;var a=0,b=0;for(var n=8;n<=NMAX;n++){var i=n-5,zz=res.z[NG+i];a+=n*zz*res.frac[i];b+=n*zz}return b>0?a/b:0}
+function liq8(res){if(!res||!res.frac)return 0;var a=0,b=0;for(var n=5;n<=NMAX;n++){var i=n-5,v=n*res.z[NG+i]*res.frac[i];b+=v;if(n>=8)a+=v}return b>0?a/b:0}
+function r57(res){if(!res||!res.frac)return 0;var a=0,b=0;for(var n=5;n<=7;n++){var i=n-5,zz=res.z[NG+i];a+=n*zz*res.frac[i];b+=n*zz}return b>0?a/b:0}
+function w8of(al){var a=0,b=0;for(var n=5;n<=NMAX;n++){var v=n*Math.pow(al,n-1);b+=v;if(n>=8)a+=v}return a/b}
+// ---------- UI ----------
+var ids=['iBasis','iCO2','iH2','iVm','iP','iT','iX','iXw','iSCO','iSCH4','iSC24','iSC5','iA','iModel','iOil','iHr','iL8'];
+var LS={get:function(k,d){try{var v=__LS.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set:function(k,v){try{__LS.setItem(k,JSON.stringify(v))}catch(e){}}};
+var saved=LS.get('rec-in',null);if(saved){ids.forEach(function(k){if(saved[k]!=null)$(k).value=saved[k]});if(saved.iDist!=null)$('iDist').value=saved.iDist;if(saved.iAuto!=null)$('iAuto').checked=saved.iAuto}
+function num(id){var v=parseFloat($(id).value);return isFinite(v)?v:null}
+function f(v,d){return v==null||!isFinite(v)?'–':v.toFixed(d)}
+var timer=null;
+function sched(){clearTimeout(timer);$('status').textContent='計算中…';timer=setTimeout(calc,250)}
+function readInputs(){
+  var Fc=num('iCO2'),Fh=num('iH2'),Vm=parseFloat($('iVm').value),P=num('iP'),Tc=num('iT'),Xg=num('iX'),Xw=num('iXw'),Sco=num('iSCO'),Sch4=num('iSCH4'),S24=num('iSC24'),al=num('iA'),model=$('iModel').value;
+  if($('iAuto').checked&&Sco!=null&&Sch4!=null&&S24!=null){$('iSC5').value=(100-Sco-Sch4-S24).toFixed(1);$('iSC5').disabled=true}else $('iSC5').disabled=false;
+  var S5=num('iSC5');
+  if([Fc,Fh,P,Tc,Xg,Sco,Sch4,S24,S5,al].some(function(v){return v==null}))return{err:'有欄位沒填數字。'};
+  if(al<=0||al>=1)return{err:'α 要介於 0 與 1 之間。'};
+  var useXw=(Xw!=null&&Xw>0),X=useXw?Xw:Xg,oil=num('iOil'),hr=num('iHr');
+  return{Fc:Fc,Vm:Vm,P:P,Tc:Tc,X:X,xsrc:useXw?'水量法':'GC',Sco:Sco,Sch4:Sch4,S24:S24,S5:S5,al:al,model:model,oil:oil,hr:hr,haveOil:(oil!=null&&oil>0&&hr>0),
+    T:Tc+273.15,Pp:P*1e5,nC:Fc/1000/Vm,nH:Fh/1000/Vm}}
+function solve(I,al){
+  var conv=I.nC*I.X/100,cCO=conv*I.Sco/100,cCH4=conv*I.Sch4/100,c24=conv*I.S24/100,w=0,cw=0;
+  for(var n=5;n<=NMAX;n++){var v=Math.pow(al,n-1);w+=v;cw+=n*v}
+  function state(c5){var h2use=conv+2*(c24+c5)+3*cCH4,h2o=I.nH-h2use,gas=[Math.max(h2o,1e-9),I.nC-conv,cCO,cCH4,Math.max(c24/3,1e-12)],mol5=c5*w/cw,dry=gas.reduce(function(a,b){return a+b},0),Fout=dry+mol5;
+    return{h2use:h2use,h2o:h2o,Fout:Fout,Yc:c5/Fout,gs:gas.map(function(g){return g/dry})}}
+  function ev(c5){var s=state(c5);s.c5=c5;s.res=c5>0?recov(al,s.Yc,s.gs,I.T,I.Pp,I.model):{R:0,frac:null,z:null};return s}
+  var out,info='',over=false;
+  if(I.haveOil){var oilC=I.oil/I.hr/14.03/60,lo=oilC,hi=conv;
+    if(hi*ev(hi).res.R<oilC){over=true;out=ev(hi)}
+    else{for(var it=0;it<40;it++){var m=Math.sqrt(lo*hi);if(m*ev(m).res.R>oilC)hi=m;else lo=m;if(hi/lo<1.0005)break}out=ev(Math.sqrt(lo*hi));info='（迭代 '+(it+1)+' 次收斂）'}
+  } else out=ev(conv*I.S5/100);
+  out.conv=conv;out.info=info;out.over=over;return out}
+function calc(){
+  var st={};ids.forEach(function(k){st[k]=$(k).value});st.iAuto=$('iAuto').checked;st.iDist=$('iDist').value;LS.set('rec-in',st);
+  var I=readInputs();
+  if(I.err){$('warn').textContent=I.err;$('warn').hidden=false;$('status').textContent='缺資料';return}
+  if(!I.haveOil&&I.S5<=0){$('warn').textContent='S_C₅₊ ≤ 0，沒有可收集的 C₅₊。';$('warn').hidden=false;$('status').textContent='無法計算';return}
+  var s=solve(I,I.al),warn=[];
+  if(s.over)warn.push('收到的油比「轉化的碳全部變成 C₅₊」時能收到的還多，請確認油重、時間或轉化率。');
+  if(s.h2o<0)warn.push('依選擇性算出的 H₂ 消耗大於進料，請確認 H₂ 流量或選擇性。');
+  $('warn').textContent=warn.join(' ');$('warn').hidden=!warn.length;
+  var res=s.res,Rr=res.R,Yc=s.Yc,gs=s.gs,c5=s.c5,conv=s.conv,prod=c5*14.03*60,coll=prod*Rr,Simp=c5/conv*100,mode=I.haveOil?'由實際收油迭代':'GC 選擇性';
+  var kv='<div><span class="k">C₅₊ 液相回收率'+(I.haveOil?'（自洽反推）':'')+'</span><span class="v">'+f(Rr*100,1)+'<small> %</small></span></div>'+
+    '<div><span class="k">C₈₊ 液相回收率'+(I.haveOil?'（自洽反推）':'')+'</span><span class="v">'+f(r8(res)*100,1)+'<small> %</small></span></div>'+
+    '<div><span class="k">C₅₊ 生成量'+(I.haveOil?'（反推）':'')+'</span><span class="v">'+f(prod,3)+'<small> g/h</small></span></div>'+
+    '<div><span class="k">'+(I.haveOil?'實際收油':'預期收到的油')+'</span><span class="v">'+f(coll,3)+'<small> g/h · '+f(coll*12,2)+' g/12 h</small></span></div>'+
+    '<div><span class="k">隨尾氣損失</span><span class="v">'+f(prod-coll,3)+'<small> g/h</small></span></div>';
+  var eff=null;
+  if(I.haveOil){kv+='<div><span class="k">自洽 S_C₅₊（'+I.xsrc+'轉化率）</span><span class="v">'+f(Simp,1)+'<small> %</small></span></div>';
+    var I0=Object.assign({},I,{haveOil:false}),s0=solve(I0,I.al);kv+='<div><span class="k">若照輸入 S_C₅₊ '+f(I.S5,1)+'%</span><span class="v">'+f(s0.res.R*100,1)+'<small> % 回收 · 預期 '+f(s0.c5*14.03*60*s0.res.R,3)+' g/h</small></span></div>';
+    if(s0.c5>0&&s0.res.R>0){var prodG=s0.c5*14.03*60,oilR=I.oil/I.hr,Rid=s0.res.R,R8id=r8(s0.res),w8=w8of(I.al),l8m=liq8(s0.res),l8in=num('iL8'),l8=(l8in!=null&&l8in>0)?Math.min(l8in,100)/100:l8m,Ract=oilR/prodG,R8act=oilR*l8/(prodG*w8),eta=Ract/Rid,eta8=R8id>0?R8act/R8id:null;
+      eff={c5:s0.c5,prodG:prodG,oilR:oilR,Ract:Ract,Rid:Rid,eta:eta,R8id:R8id,R8act:R8act,eta8:eta8,w8:w8,l8:l8,l8src:(l8in!=null&&l8in>0)?'實測':'模型'};
+      var pl=function(e){return e==null?'':e>1.2?'<span class="pill p-warn">高於理想</span>':e>=0.8?'<span class="pill p-good">接近平衡</span>':e>=0.5?'<span class="pill p-warn">有非平衡損失</span>':'<span class="pill p-bad">損失大</span>'};
+      kv+='<div><span class="k">C₅₊ 實際回收率（GC 差減基準）</span><span class="v">'+f(Ract*100,1)+'<small> %</small></span></div>'+
+        '<div><span class="k">C₅₊ 理想回收率（PR）</span><span class="v">'+f(Rid*100,1)+'<small> %</small></span></div>'+
+        '<div><span class="k">C₅₊ 收集效率 η</span><span class="v">'+f(eta*100,0)+'<small> %</small> '+pl(eta)+'</span></div>'+
+        '<div><span class="k">C₈₊ 實際回收率（GC 差減基準）</span><span class="v">'+f(R8act*100,1)+'<small> %</small></span></div>'+
+        '<div><span class="k">C₈₊ 理想回收率（PR）</span><span class="v">'+f(R8id*100,1)+'<small> %</small></span></div>'+
+        '<div><span class="k">C₈₊ 收集效率 η</span><span class="v">'+f(eta8*100,0)+'<small> %</small> '+pl(eta8)+'</span></div>'}}
+  else kv+='<div><span class="k">收集效率 η</span><span class="v">–<small> 填實際收油後計算</small></span></div>'
+  var gcs=I.haveOil?s0:s,S5g=I.S5,c57=null;
+  if(gcs&&gcs.res&&S5g>0){var aL=Math.max(0.3,I.al-0.04),aH=Math.min(0.97,I.al+0.04),w57=1-w8of(I.al),w57L=1-w8of(aL),w57H=1-w8of(aH),cg=conv*S5g/100,
+      R57=r57(gcs.res),gph=function(w){return cg*w*14.03*60};
+    c57={w57:w57,w57L:w57L,w57H:w57H,aL:aL,aH:aH,S:S5g*w57,SL:S5g*w57H,SH:S5g*w57L,g:gph(w57),gL:gph(w57H),gH:gph(w57L),R57:R57,cg:cg};
+    if(I.haveOil){c57.Ssc=c5/conv*100*w57;c57.gsc=c5*w57*14.03*60}
+    kv+='<div><span class="k">C₅–C₇ 估算 S（差減 × w₅₋₇）</span><span class="v">'+f(c57.S,1)+'<small> %（'+f(c57.SL,1)+'–'+f(c57.SH,1)+'）</small></span></div>'+
+      '<div><span class="k">C₅–C₇ 生成量</span><span class="v">'+f(c57.g,3)+'<small> g/h（'+f(c57.gL,3)+'–'+f(c57.gH,3)+'）</small></span></div>'+
+      '<div><span class="k">C₅–C₇ 理想回收率（PR）</span><span class="v">'+f(R57*100,1)+'<small> % · 理想收到 '+f(c57.g*R57,3)+' g/h</small></span></div>'+
+      (I.haveOil?'<div><span class="k">C₅–C₇（由收油自洽反推，下限）</span><span class="v">'+f(c57.Ssc,1)+'<small> % · '+f(c57.gsc,3)+' g/h</small></span></div>':'');}
+  $('kv').innerHTML=kv;
+  var t='CO₂ 進料 = '+f(I.Fc,1)+' / 1000 / '+I.Vm+' = '+I.nC.toExponential(3)+' mol/min\n轉化率用 '+I.xsrc+' '+f(I.X,1)+'% → 轉化的碳 = '+conv.toExponential(3)+' mol C/min\n';
+  if(I.haveOil)t+='實際收油 '+f(I.oil,2)+' g ÷ '+f(I.hr,2)+' h = '+f(I.oil/I.hr,3)+' g/h = '+(I.oil/I.hr/14.03/60).toExponential(3)+' mol C/min\n求 C₅₊ 碳流量 c，使 c × R(c) = 收油碳流量 '+s.info+' → c = '+c5.toExponential(3)+' mol C/min\n自洽 S_C₅₊ = c ÷ 轉化的碳 = '+f(Simp,1)+' %\n';
+  else t+='C₅₊ 碳（S = '+f(I.S5,1)+'%）= '+c5.toExponential(3)+' mol C/min\n';
+  t+='H₂ 消耗 ≈ 轉化 + 2·(C₂₊ 碳) + 3·CH₄ 碳 = '+s.h2use.toExponential(3)+'；剩餘 H₂ = '+s.h2o.toExponential(3)+' mol/min\n冷阱出口乾氣 F_out = '+s.Fout.toExponential(3)+' mol/min → Y_C = '+f(Yc*100,3)+' %\nPR 閃蒸（'+f(I.P,1)+' bar、'+f(I.Tc,1)+'°C、α = '+f(I.al,2)+'）→ R = '+f(Rr*100,1)+' %';
+  if(eff)t+='\n\n— 收集效率 —\nGC 生成量 = 轉化的碳 × S_C₅₊ = '+conv.toExponential(3)+' × '+f(I.S5,1)+'% = '+eff.c5.toExponential(3)+' mol C/min = '+f(eff.prodG,3)+' g/h\n理想回收率 R_理想 = '+f(eff.Rid*100,1)+' %（同條件 PR 閃蒸）→ 理想收油 = '+f(eff.prodG,3)+' × '+f(eff.Rid,3)+' = '+f(eff.prodG*eff.Rid,3)+' g/h\n實際回收率 R_實際 = 實際收油 ÷ GC 生成量 = '+f(eff.oilR,3)+' ÷ '+f(eff.prodG,3)+' = '+f(eff.Ract*100,1)+' %\n收集效率 η = R_實際 ÷ R_理想 = '+f(eff.Ract*100,1)+' ÷ '+f(eff.Rid*100,1)+' = '+f(eff.eta*100,0)+' %（等於 實際收油 ÷ 理想收油）'+
+    '\n\nC₈₊ 基準\nC₈₊ 占 C₅₊ 生成碳 w₈₊ = '+f(eff.w8,3)+'（α = '+f(I.al,3)+'）→ C₈₊ 生成量 = '+f(eff.prodG,3)+' × '+f(eff.w8,3)+' = '+f(eff.prodG*eff.w8,3)+' g/h\n液相中 C₈₊ 碳的比例（'+eff.l8src+'）= '+f(eff.l8*100,1)+' % → 收到的 C₈₊ = '+f(eff.oilR,3)+' × '+f(eff.l8,3)+' = '+f(eff.oilR*eff.l8,3)+' g/h\nC₈₊ 實際回收率 = '+f(eff.oilR*eff.l8,3)+' ÷ '+f(eff.prodG*eff.w8,3)+' = '+f(eff.R8act*100,1)+' %；理想 = '+f(eff.R8id*100,1)+' %\nC₈₊ 收集效率 η = '+f(eff.R8act*100,1)+' ÷ '+f(eff.R8id*100,1)+' = '+f(eff.eta8*100,0)+' %'+(eff.l8src==='模型'?'\n注意：液相 C₈₊ 比例用模型值時，C₈₊ 的 η 必然等於 C₅₊ 的 η。要讓兩者各自有意義，需填入用內標法量到的油中 C₈₊ 比例。':'');
+  if(c57)t+='\n\n— C₅–C₇ 估算（單一 α）—\nw₅₋₇ = 1 − α³(8 − 7α) ÷ (5 − 4α) = '+f(c57.w57,3)+'（α = '+f(I.al,3)+'）；α ± 0.04 → '+f(c57.w57H,3)+'–'+f(c57.w57L,3)+'\nS_C₅–C₇ = S_C₅₊（差減）× w₅₋₇ = '+f(I.S5,1)+'% × '+f(c57.w57,3)+' = '+f(c57.S,1)+' %（範圍 '+f(c57.SL,1)+'–'+f(c57.SH,1)+' %）\nC₅–C₇ 生成量 = '+c57.cg.toExponential(3)+' mol C/min × '+f(c57.w57,3)+' × 14.03 × 60 = '+f(c57.g,3)+' g/h\nC₅–C₇ 理想回收率 = '+f(c57.R57*100,1)+' % → 理想收到 '+f(c57.g*c57.R57,3)+' g/h，其餘隨尾氣離開'+(I.haveOil?'\n由收油自洽反推（下限）：S_C₅–C₇ = '+f(c57.Ssc,1)+' %、'+f(c57.gsc,3)+' g/h；與差減值的差 = '+f(c57.S-c57.Ssc,1)+' 個百分點':'');
+  $('steps').textContent=t;
+  var th='<thead><tr><th>碳數</th><th class="n">占 C₅₊ 碳</th><th class="n">進液相比例</th><th class="n">收到 g/h</th><th class="n">損失 g/h</th></tr></thead><tbody>',n,i;
+  for(n=5;n<=20;n++){i=n-5;var share=n*res.z[NG+i]/Yc,fr=res.frac?res.frac[i]:0;th+='<tr><td>C'+n+'</td><td class="n">'+f(share*100,1)+'%</td><td class="n">'+f(fr*100,1)+'%</td><td class="n">'+f(prod*share*fr,4)+'</td><td class="n">'+f(prod*share*(1-fr),4)+'</td></tr>'}
+  var s21=0,f21=0;for(n=21;n<=NMAX;n++){i=n-5;var sh=n*res.z[NG+i]/Yc;s21+=sh;f21+=sh*(res.frac?res.frac[i]:0)}
+  th+='<tr><td>C21+</td><td class="n">'+f(s21*100,1)+'%</td><td class="n">'+f(s21>0?f21/s21*100:0,1)+'%</td><td class="n">'+f(prod*f21,4)+'</td><td class="n">'+f(prod*(s21-f21),4)+'</td></tr></tbody>';
+  $('tbl').innerHTML=th;
+  $('gas').innerHTML=['H₂','CO₂','CO','CH₄','C₂₋₄'].map(function(k,i){return k+' <b>'+f(gs[i]*100,1)+'%</b>'}).join('')+'<span>C₅₊ 碳 Y_C <b>'+f(Yc*100,3)+'%</b></span><span>計算基準 <b>'+mode+'</b></span>';
+  drawChart(Yc,gs,I.T,I.Pp,I.model,I.al,Rr);
+  alphaFix(I);
+  $('status').textContent='已更新';
+}
+// ---------- α correction ----------
+function parseDist(txt){var d={};txt.split(/\n/).forEach(function(l){var m=l.match(/C?\s*(\d{1,2})\s*[\t ,:：=]+\s*([0-9.eE+-]+)/i);if(m){var n=+m[1],v=parseFloat(m[2]);if(n>=5&&n<=60&&isFinite(v)&&v>0)d[n]=(d[n]||0)+v}});return d}
+function linfit(xs,ys){var n=xs.length,sx=0,sy=0,sxx=0,sxy=0;for(var i=0;i<n;i++){sx+=xs[i];sy+=ys[i];sxx+=xs[i]*xs[i];sxy+=xs[i]*ys[i]}var b=(n*sxy-sx*sy)/(n*sxx-sx*sx);return{b:b,a:(sy-b*sx)/n}}
+function alphaFit(W){var ns=Object.keys(W).map(Number).sort(function(a,b){return a-b}),xs=[],ys=[];ns.forEach(function(n){xs.push(n-1);ys.push(Math.log(W[n]/n))});if(xs.length<3)return null;var r=linfit(xs,ys);return{alpha:Math.exp(r.b),fit:r,ns:ns}}
+var lastFix=null;
+function alphaFix(I){var box=$('fixOut'),raw=parseDist($('iDist').value),ns=Object.keys(raw).map(Number).sort(function(a,b){return a-b});
+  if(ns.length<3){box.innerHTML='<p class="muted">貼上至少三個碳數的濃度後，這裡會顯示修正結果。</p>';$('fixChart').innerHTML='';lastFix=null;return}
+  var basis=$('iBasis').value,W={};ns.forEach(function(n){var v=raw[n];W[n]=basis==='mol'?v*(14.027*n+2.016):v});
+  var s0=0;ns.forEach(function(n){s0+=W[n]});ns.forEach(function(n){W[n]/=s0});
+  var r0=alphaFit(W);if(!r0||!(r0.alpha>0&&r0.alpha<1)){box.innerHTML='<p class="muted">直接回歸得到的 α 不在 0–1 之間，請確認數據。</p>';return}
+  var a=r0.alpha,frac=null,Wc={},used=[],hist=[a],it;
+  for(it=0;it<30;it++){var s=solve(I,a);frac=s.res.frac;if(!frac)break;Wc={};used=[];
+    ns.forEach(function(n){var fr=frac[n-5];if(fr>=0.1){Wc[n]=W[n]/fr;used.push(n)}});
+    var r=alphaFit(Wc);if(!r)break;var an=Math.min(Math.max(r.alpha,0.3),0.98);hist.push(an);if(Math.abs(an-a)<1e-4){a=an;break}a=an}
+  var rc=alphaFit(Wc),firstGood=null;if(frac)for(var n=5;n<=40;n++){if(frac[n-5]>=0.9){firstGood=n;break}}
+  var cut={};if(firstGood)ns.forEach(function(n){if(n>=firstGood)cut[n]=W[n]});var rcut=Object.keys(cut).length>=3?alphaFit(cut):null;
+  lastFix={a:a};
+  var h='<div class="kv"><div><span class="k">直接回歸 α（液相，未修正）</span><span class="v">'+f(r0.alpha,3)+'</span></div>'+
+    '<div><span class="k">修正後 α（生成分佈）</span><span class="v">'+f(a,3)+'<small> 迭代 '+(it+1)+' 次</small></span></div>'+
+    (rcut?'<div><span class="k">只用 C'+firstGood+' 以上回歸</span><span class="v">'+f(rcut.alpha,3)+'<small> 進液相 ≥ 90%</small></span></div>':'')+
+    '</div><div class="row" style="margin:4px 0 10px"><button type="button" class="btn pri" id="useA">用修正後 α 重算上方回收率</button><span class="muted small">α 改變後回收率也會改變</span></div>';
+  h+='<div class="tw"><table><thead><tr><th>碳數</th><th class="n">輸入</th><th class="n">液相質量分率</th><th class="n">進液相比例</th><th class="n">還原後（相對）</th><th>回歸</th></tr></thead><tbody>';
+  var sc=0;used.forEach(function(n){sc+=Wc[n]});
+  ns.forEach(function(n){var fr=frac?frac[n-5]:null;h+='<tr><td>C'+n+'</td><td class="n">'+raw[n]+'</td><td class="n">'+f(W[n]*100,2)+'%</td><td class="n">'+(fr!=null?f(fr*100,1)+'%':'–')+'</td><td class="n">'+(Wc[n]!=null?f(Wc[n]/sc*100,2)+'%':'–')+'</td><td>'+(used.indexOf(n)>=0?'✓':'<span class="muted">捨去（進液相 &lt; 10%）</span>')+'</td></tr>'});
+  h+='</tbody></table></div>';box.innerHTML=h;
+  $('useA').addEventListener('click',function(){if(lastFix){$('iA').value=lastFix.a.toFixed(3);sched()}});
+  drawFix(W,Wc,r0,rc,ns,used)}
+function drawFix(W,Wc,r0,rc,ns,used){var Wd=560,H=240,L=48,Rt=12,Tp=26,Bt=34,pts=[];
+  ns.forEach(function(n){pts.push(Math.log(W[n]/n));if(Wc[n])pts.push(Math.log(Wc[n]/n))});
+  var y0=Math.min.apply(null,pts),y1=Math.max.apply(null,pts),pad=(y1-y0)*0.08||1;y0-=pad;y1+=pad;var n0=ns[0]-1,n1=ns[ns.length-1]+1;
+  var X=function(n){return L+(n-n0)/(n1-n0)*(Wd-L-Rt)},Y=function(v){return Tp+(y1-v)/(y1-y0)*(H-Tp-Bt)},s='';
+  for(var k=0;k<=4;k++){var v=y0+(y1-y0)*k/4;s+='<line class="gd" x1="'+L+'" x2="'+(Wd-Rt)+'" y1="'+Y(v)+'" y2="'+Y(v)+'"/><text class="tx" x="'+(L-6)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+v.toFixed(1)+'</text>'}
+  ns.forEach(function(n){s+='<text class="tx" x="'+X(n)+'" y="'+(H-Bt+16)+'" text-anchor="middle">'+n+'</text>'});
+  function line(r,col,dash){var a=r.fit.a,b=r.fit.b;return '<line x1="'+X(n0+0.5)+'" y1="'+Y(a+b*(n0+0.5-1))+'" x2="'+X(n1-0.5)+'" y2="'+Y(a+b*(n1-0.5-1))+'" stroke="'+col+'" stroke-width="1.5"'+(dash?' stroke-dasharray="5 4"':'')+'/>'}
+  s+=line(r0,'var(--muted)',true);if(rc)s+=line(rc,'var(--accent)',false);
+  ns.forEach(function(n){s+='<circle cx="'+X(n)+'" cy="'+Y(Math.log(W[n]/n))+'" r="3.5" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.5"/>';if(Wc[n])s+='<circle cx="'+X(n)+'" cy="'+Y(Math.log(Wc[n]/n))+'" r="3.5" fill="var(--accent)"/>'});
+  s+='<text class="tx" x="'+((L+Wd-Rt)/2)+'" y="'+(H-4)+'" text-anchor="middle">碳數 n</text><text class="tx" x="6" y="12">ln(W/n)</text>';
+  $('fixChart').innerHTML='<svg viewBox="0 0 '+Wd+' '+H+'" role="img" aria-label="ASF 回歸對照">'+s+'</svg><div class="legend"><span><i style="background:var(--muted)"></i>液相（直接回歸，虛線）</span><span><i style="background:var(--accent)"></i>還原後生成分佈（修正回歸，實線）</span></div>'}
+function drawChart(Yc,gs,T,P,model,al,Rr){var W=560,H=230,L=44,Rt=12,Tp=12,Bt=34,xs=[],ys=[];
+  for(var a=0.60;a<=0.9501;a+=0.025){xs.push(a);ys.push(recov(a,Yc,gs,T,P,model).R*100)}
+  var X=function(a){return L+(a-0.6)/(0.35)*(W-L-Rt)},Y=function(v){return Tp+(100-v)/100*(H-Tp-Bt)},s='';
+  [0,20,40,60,80,100].forEach(function(v){s+='<line class="gd" x1="'+L+'" x2="'+(W-Rt)+'" y1="'+Y(v)+'" y2="'+Y(v)+'"/><text class="tx" x="'+(L-6)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+v+'</text>'});
+  [0.6,0.7,0.8,0.9].forEach(function(a){s+='<text class="tx" x="'+X(a)+'" y="'+(H-Bt+16)+'" text-anchor="middle">'+a.toFixed(1)+'</text>'});
+  s+='<line class="ax" x1="'+L+'" x2="'+(W-Rt)+'" y1="'+Y(0)+'" y2="'+Y(0)+'"/>';
+  s+='<polyline fill="none" stroke="var(--accent)" stroke-width="2" points="'+xs.map(function(a,i){return X(a).toFixed(1)+','+Y(ys[i]).toFixed(1)}).join(' ')+'"/>';
+  if(al>=0.6&&al<=0.95)s+='<circle cx="'+X(al)+'" cy="'+Y(Rr*100)+'" r="5" fill="var(--accent)"/><text class="tx" x="'+(X(al)+8)+'" y="'+(Y(Rr*100)-8)+'">α '+al.toFixed(2)+' · '+(Rr*100).toFixed(1)+'%</text>';
+  s+='<text class="tx" x="'+((L+W-Rt)/2)+'" y="'+(H-4)+'" text-anchor="middle">α</text><text class="tx" x="10" y="'+(Tp+4)+'">%</text>';
+  $('chart').innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="回收率對 α 曲線">'+s+'</svg>'}
+ids.forEach(function(k){$(k).addEventListener('input',sched);$(k).addEventListener('change',sched)});
+$('iAuto').addEventListener('change',sched);$('iDist').addEventListener('input',sched);
+document.querySelectorAll('[data-tab]').forEach(function(b){b.addEventListener('click',function(){var t=b.getAttribute('data-tab');['calc','how'].forEach(function(x){$('p-'+x).hidden=x!==t;document.querySelector('[data-tab="'+x+'"]').setAttribute('aria-selected',x===t?'true':'false')});window.scrollTo(0,0)})});
+calc();
+})();
+
+</script>
+</body></html>

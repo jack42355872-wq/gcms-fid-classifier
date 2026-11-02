@@ -125,8 +125,8 @@ button, input { font: inherit; color: inherit; }
       <div class="home-in">
         <div>
           <div class="eyebrow">總覽</div>
-          <h1>六個分析工具，一個工作區</h1>
-          <p class="lead">從上方選單切換工具。開過的工具會留在背景，正在編輯的數據、勾選和圖都維持原樣。除了 FID 分類，其餘五個工具的數據都存在這個瀏覽器裡，關掉頁面再打開會自動還原。</p>
+          <h1>七個分析工具，一個工作區</h1>
+          <p class="lead">從上方選單切換工具。開過的工具會留在背景，正在編輯的數據、勾選和圖都維持原樣。除了 FID 分類，其餘六個工具的數據都存在這個瀏覽器裡，關掉頁面再打開會自動還原。</p>
         </div>
         <div id="storeWarn" class="warnbar" hidden></div>
         <div class="mods" role="list" aria-label="工具">
@@ -135,7 +135,7 @@ button, input { font: inherit; color: inherit; }
         </div>
         <section class="card" aria-labelledby="bkTitle">
           <h2 id="bkTitle">資料備份</h2>
-          <p>反應器、GC-TCD、液相 ASF、層析圖排版、L16 五個工具的數據只存在這個瀏覽器。換電腦、換瀏覽器或清除網站資料之前，先匯出一份備份；之後在這裡匯入，就能把五個工具一起還原。（FID 分類不在瀏覽器存資料，每次上傳即時分析，不需備份。）</p>
+          <p>反應器、GC-TCD、液相 ASF、液相回收率、層析圖排版、L16 六個工具的數據只存在這個瀏覽器。換電腦、換瀏覽器或清除網站資料之前，先匯出一份備份；之後在這裡匯入，就能把六個工具一起還原。（FID 分類不在瀏覽器存資料，每次上傳即時分析，不需備份。）</p>
           <div class="row">
             <button type="button" class="btn primary" id="btnBackup">匯出全部數據（.json）</button>
             <label class="btn" for="restoreFile">匯入備份…</label>
@@ -145,15 +145,16 @@ button, input { font: inherit; color: inherit; }
           </div>
           <div id="restoreBox" hidden></div>
           <div class="msg" id="bkMsg" role="status" aria-live="polite"></div>
-          <p class="note">備份包含各工具的設定、峰表、已存的數據、圖片樣式、疊圖與組圖排版，以及反應器記錄的分段與選取。反應器的原始 CSV 檔案太大，不放進備份，請保留原檔。</p>
+          <p class="note">備份包含各工具的設定、峰表、已存的數據、圖片樣式、疊圖與組圖排版，反應器記錄的分段與選取，以及液相回收率填的反應條件、冷阱條件與碳數分佈。反應器的原始 CSV 檔案太大，不放進備份，請保留原檔。</p>
         </section>
         <section class="card" aria-labelledby="aboutTitle">
           <h2 id="aboutTitle">關於這個工作區（2026-10-18 整合）</h2>
           <ul>
             <li><b>來源。</b>反應器記錄分段、GC-TCD、液相 ASF、層析圖排版、L16 最佳化這五個工具原本是學長做的獨立網頁（只能在 claude.ai 裡開），現在和 FID 分類放進同一個站。工具本身的程式沒有重寫，只改了這幾處：下載改成一般瀏覽器下載、數據存放改接這裡的共用儲存、液相 ASF 的類別判定順序（見下一條）、ASF 載入只有「Sheet1」一個工作表的檔案時改用檔名當樣品名、反應器記錄找不到範例檔時的提示。</li>
             <li><b>FID 分類與液相 ASF 的分工。</b>FID 分類是依化學結構規則把每個峰歸入 7 大類（含 n-alkane 的滯留時間校驗），輸出各類百分比與 Excel 報告；液相 ASF 是依名稱與滯留時間指派碳數，求 Total / Alkane / Alkene 的碳數分布與 α。液相 ASF 原本先判環、再判不飽和，環烯（cyclopentene、cyclohexene 等）會被算成 cyclic；已改成「含氧／雜原子 → 芳香環 → 不飽和 → 環 → 烷」，和 FID 分類同一套順序，cyclic 只收全飽和的環。但 FID 分類另外用滯留時間校驗 n-alkane（名稱是直鏈烷、RT 卻對不上標尺的歸 iso-alkane），ASF 沒有這一步，所以同一份峰表的 n-alkane／iso-alkane 比例兩邊仍會有差；溶劑峰的扣除規則也不同。要出 i/n 比，以 FID 分類為準。</li>
+            <li><b>液相回收率計算（2026-11-02 加入）。</b>學長另外做的第六個工具：用 Peng–Robinson 狀態方程式算冷阱閃蒸，估計 C₅₊ / C₈₊ 有多少進到液相、多少隨尾氣走掉；填實際收油可得收集效率 η，貼液相碳數分佈可校正 α。程式原樣放入，只把它存設定的 <code>localStorage</code> 改接這裡的共用儲存（所以備份收得到）。它的輸入大多來自前面的工具，目前要手動帶：轉化率與 CO、CH₄、C₂₋₄ 選擇性看 GC-TCD，α 看液相 ASF。算出來的是平衡模型的估計值，不是量測值。</li>
             <li><b>範例資料。</b>液相 ASF（13 個樣品）、層析圖排版（6 條 TIC）、L16（範例數據）首次開啟時會帶學長原檔附的示範數據，載入自己的檔案後會取代。反應器記錄沒有附範例檔，請直接拖入記錄器 CSV。</li>
-            <li><b>隱私與費用。</b>整個站沒有任何 AI／Claude 的呼叫（伺服器沒有 API 金鑰，頁面也不連任何模型服務），使用不會消耗 token。五個工具全部在你的瀏覽器裡計算，檔案不會上傳到伺服器；它們需要的三個函式庫（Excel 讀寫、繪圖）也是由本站直接提供，不依賴外部 CDN。FID 分類會把檔案送到伺服器處理，處理完即丟棄、不存檔；僅對辨識不出的化合物名稱向 PubChem 查詢（只送名稱，不送濃度或檔案）。</li>
+            <li><b>隱私與費用。</b>整個站沒有任何 AI／Claude 的呼叫（伺服器沒有 API 金鑰，頁面也不連任何模型服務），使用不會消耗 token。六個工具全部在你的瀏覽器裡計算，檔案不會上傳到伺服器；它們需要的三個函式庫（Excel 讀寫、繪圖）也是由本站直接提供，不依賴外部 CDN。FID 分類會把檔案送到伺服器處理，處理完即丟棄、不存檔；僅對辨識不出的化合物名稱向 PubChem 查詢（只送名稱，不送濃度或檔案）。</li>
           </ul>
         </section>
       </div>
@@ -177,6 +178,8 @@ button, input { font: inherit; color: inherit; }
       what: '貼上 TCD 峰表、輸入入口與出口流量，算 CO₂ / H₂ 轉化率、CO 與烴類選擇性和產率。', io: 'TCD 峰表 + 流量 → 轉化率、選擇性、產率（Excel、圖）' },
     { id: 'asf', src: '/static/suite/asf.html', name: '液相產物 ASF 分析', tab: '液相 ASF', sub: 'GC-MS · α', cat: '液相產物',
       what: '依名稱與滯留時間分類峰、指派碳數，求 Total / Alkane / Alkene 的 ASF 分布與 α。', io: 'GC-MS 峰表（.xlsx / .csv）→ 碳數分布、α、比較表' },
+    { id: 'rec', src: '/static/suite/rec.html', name: '液相回收率計算', tab: '液相回收率', sub: 'PR 閃蒸 · η', cat: '液相產物',
+      what: '用 Peng–Robinson 狀態方程式模擬冷阱閃蒸，由反應條件、GC 選擇性與 α 算 C₅₊ / C₈₊ 液相回收率；填實際收油可反推收集效率 η，貼液相碳數分佈可校正 α。', io: '條件 + 轉化率 / 選擇性 + α（+ 實際收油、碳數分佈）→ 回收率、η、校正後 α' },
     { id: 'chrom', src: '/static/suite/chrom.html', name: 'Chromatogram Grid', tab: '層析圖排版', sub: 'm × n 子圖', cat: '圖表',
       what: 'GC-MS / FID 譜圖排成 m × n 子圖，加標題與操作條件，輸出論文用圖。', io: 'Shimadzu ASCII / CSV / xlsx → PNG、SVG' },
     { id: 'l16', src: '/static/suite/l16.html', name: 'L16 最佳化工作台', tab: 'L16 最佳化', sub: 'L16(4⁵) · Pareto', cat: '實驗設計',
@@ -381,6 +384,16 @@ button, input { font: inherit; color: inherit; }
       const cur = asf.samples.find((s) => s.id === asf.active);
       out.asf = `${asf.samples.length} 個樣品${cur ? ` · 目前：${esc(cur.label)}` : ''}${asf.settings && Array.isArray(asf.settings.riLib) && asf.settings.riLib.length ? ` · RI 對照表 ${asf.settings.riLib.length} 筆` : ''}`;
     } else out.asf = '內建 13 個樣品';
+    // liquid recovery: the tool keeps its form fields as strings under one key
+    const rec = parse('rec-in');
+    if (rec && typeof rec === 'object') {
+      const has = (k) => rec[k] != null && String(rec[k]).trim() !== '';
+      const xw = Number(rec.iXw) > 0, oil = Number(rec.iOil) > 0 && Number(rec.iHr) > 0;
+      out.rec = [`${esc(rec.iP)} bar · ${esc(rec.iT)} °C`,
+        has('iX') || xw ? `${xw ? '水量法 ' : ''}X ${esc(xw ? rec.iXw : rec.iX)}%` : '',
+        has('iA') ? `α ${esc(rec.iA)}` : '',
+        oil ? `已填實際收油 ${esc(rec.iOil)} g / ${esc(rec.iHr)} h` : ''].filter(Boolean).join(' · ');
+    } else out.rec = '預設條件（20 bar、25 °C、α 0.74）';
     // chromatograms
     const cg = await idbGet('chromatogram-grid', 'state');
     if (cg && Array.isArray(cg.traces)) {
@@ -464,11 +477,12 @@ button, input { font: inherit; color: inherit; }
     if (obj.idb && obj.idb.reactorSegs) has.push('反應器分段');
     if (obj.storage['tcd-tool-v1']) has.push('GC-TCD');
     if (obj.storage['asf-tool-v1']) has.push('液相 ASF');
+    if (obj.storage['rec-in']) has.push('液相回收率');
     if (obj.idb && obj.idb.chromState) has.push('層析圖排版');
     if (obj.storage['l16-workbench-v1']) has.push('L16');
     const when = new Date(obj.savedAt);
     restoreBox.hidden = false; bkMsg('');
-    restoreBox.innerHTML = `<div class="confirm"><span>這份備份建立於 <b>${isNaN(when) ? esc(obj.savedAt) : esc(when.toLocaleString('zh-TW'))}</b>，包含：${has.length ? esc(has.join('、')) : '沒有任何工具的數據'}。還原會取代目前五個工具的數據，已開啟的工具會重新載入。</span>
+    restoreBox.innerHTML = `<div class="confirm"><span>這份備份建立於 <b>${isNaN(when) ? esc(obj.savedAt) : esc(when.toLocaleString('zh-TW'))}</b>，包含：${has.length ? esc(has.join('、')) : '沒有任何工具的數據'}。還原會取代目前六個工具的數據，已開啟的工具會重新載入。</span>
       <div class="row"><button type="button" class="btn primary" id="doRestore">還原這份備份</button><button type="button" class="btn" id="cancelRestore">取消</button></div></div>`;
   });
   restoreBox.addEventListener('click', async (e) => {

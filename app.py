@@ -1522,7 +1522,7 @@ def _handle_unexpected(e):
 
 @app.route('/')
 def index():
-    # 工作區外殼：FID 分類 + 學長的五個分析工具，放在同一排分頁裡（各自是獨立頁面，用 iframe 保活）。
+    # 工作區外殼：FID 分類 + 學長的六個分析工具，放在同一排分頁裡（各自是獨立頁面，用 iframe 保活）。
     resp = send_from_directory(app.static_folder, 'suite/shell.html')
     resp.headers['Cache-Control'] = 'no-cache'
     return resp
