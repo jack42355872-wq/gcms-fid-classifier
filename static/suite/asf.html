@@ -744,22 +744,47 @@ td select { padding: 2px 4px; font-size: 12px; }
   }
 
   // ---------- ASF ----------
-  /** dist: {n: W} (any units). range [lo, hi]. returns points, fit */
-  function asfFit(dist, lo, hi) {
+  /** least squares y = icpt + slope·n over points {n, y} */
+  function lsq(P) {
+    const m = P.length; if (m < 2) return null;
+    const mx = P.reduce((s, p) => s + p.n, 0) / m, my = P.reduce((s, p) => s + p.y, 0) / m;
+    let sxx = 0, sxy = 0, syy = 0;
+    for (const p of P) { sxx += (p.n - mx) ** 2; sxy += (p.n - mx) * (p.y - my); syy += (p.y - my) ** 2; }
+    if (!(sxx > 0)) return null;
+    const slope = sxy / sxx, icpt = my - slope * mx;
+    const resid = P.reduce((s, p) => s + (p.y - (icpt + slope * p.n)) ** 2, 0);
+    return { m, mx, sxx, slope, icpt, r2: syy > 0 ? (sxy * sxy) / (sxx * syy) : 1, s: m > 2 ? Math.sqrt(resid / (m - 2)) : null };
+  }
+  /** dist: {n: W} (any units). range [lo, hi]. opt: {ex: [n] excluded by hand, auto: drop outliers, thr: |t| limit}. returns points, fit */
+  function asfFit(dist, lo, hi, opt) {
+    opt = opt || {};
     const pts = Object.keys(dist).map(Number).filter((n) => dist[n] > 0).sort((a, b) => a - b);
     const tot = pts.reduce((s, n) => s + dist[n], 0);
-    const points = pts.map((n) => ({ n, w: dist[n] / tot, y: Math.log(dist[n] / tot / n) }));
-    const fitPts = points.filter((p) => p.n >= lo && p.n <= hi);
-    if (fitPts.length < 3) return { points, fit: null, total: tot };
-    const m = fitPts.length;
-    const mx = fitPts.reduce((s, p) => s + p.n, 0) / m, my = fitPts.reduce((s, p) => s + p.y, 0) / m;
-    let sxx = 0, sxy = 0, syy = 0;
-    for (const p of fitPts) { sxx += (p.n - mx) ** 2; sxy += (p.n - mx) * (p.y - my); syy += (p.y - my) ** 2; }
-    const slope = sxy / sxx, icpt = my - slope * mx;
-    const r2 = syy > 0 ? (sxy * sxy) / (sxx * syy) : 1;
-    const resid = fitPts.reduce((s, p) => s + (p.y - (icpt + slope * p.n)) ** 2, 0);
-    const seSlope = m > 2 ? Math.sqrt(resid / (m - 2) / sxx) : null;
-    return { points, total: tot, fit: { slope, icpt, r2, alpha: Math.exp(slope), seSlope, m, lo, hi } };
+    const points = pts.map((n) => ({ n, w: dist[n] / tot, y: Math.log(dist[n] / tot / n), inFit: false, out: null, t: null }));
+    const ex = new Set((opt.ex || []).map(Number));
+    const inR = points.filter((p) => p.n >= lo && p.n <= hi);
+    inR.forEach((p) => { if (ex.has(p.n)) p.out = 'manual'; });
+    let use = inR.filter((p) => !p.out);
+    if (opt.auto) {
+      // leave-one-out: refit without the point, then t = (y − ŷ) / (s·√(1 + 1/m + (n − n̄)²/Sxx)) of that refit
+      const thr = opt.thr > 0 ? +opt.thr : 3;
+      while (use.length >= 5) {
+        let worst = null, wt = 0;
+        for (const p of use) {
+          const L = lsq(use.filter((q) => q !== p)); if (!L || L.s == null) continue;
+          const se = Math.max(L.s, 1e-9) * Math.sqrt(1 + 1 / L.m + (p.n - L.mx) ** 2 / L.sxx);
+          const tv = (p.y - (L.icpt + L.slope * p.n)) / se;
+          if (Math.abs(tv) > Math.abs(wt)) { wt = tv; worst = p; }
+        }
+        if (!worst || Math.abs(wt) <= thr) break;
+        worst.out = 'auto'; worst.t = wt; use = use.filter((q) => q !== worst);
+      }
+    }
+    if (use.length < 3) return { points, fit: null, total: tot };
+    const L = lsq(use); if (!L) return { points, fit: null, total: tot };
+    use.forEach((p) => { p.inFit = true; });
+    const excluded = points.filter((p) => p.out).map((p) => ({ n: p.n, why: p.out, t: p.t }));
+    return { points, total: tot, fit: { slope: L.slope, icpt: L.icpt, r2: L.r2, alpha: Math.exp(L.slope), seSlope: L.s != null ? L.s / Math.sqrt(L.sxx) : null, m: use.length, lo, hi, excluded } };
   }
 
   const api = { parseName, buildRuler, refineRuler, consensusRuler, retentionIndex, carbonFromRI, asfFit, CLASSES, _tokenizeWord: tokenizeWord };
@@ -885,8 +910,9 @@ td select { padding: 2px 4px; font-size: 12px; }
         const nmax = ns.reduce((a, b) => (d[b] / b > d[a] / a ? b : a)); // peak of the molar distribution
         lo = fr.lo != null ? fr.lo : nmax; hi = fr.hi != null ? fr.hi : Math.max(...ns);
       }
-      let res = C.asfFit(d, lo, hi);
-      if (!res.fit && fr.lo == null && fr.hi == null && ns.length >= 3) { lo = Math.min(...ns); res = C.asfFit(d, lo, hi); }
+      const fo = { ex: fr.ex || [], auto: !!fr.auto, thr: fr.thr };
+      let res = C.asfFit(d, lo, hi, fo);
+      if (!res.fit && fr.lo == null && fr.hi == null && ns.length >= 3) { lo = Math.min(...ns); res = C.asfFit(d, lo, hi, fo); }
       asf[k] = Object.assign(res, { lo, hi, autoLo: fr.lo == null, autoHi: fr.hi == null });
     }
     const nA = classTot['n-alkane'], iA = classTot['iso-alkane'];
@@ -1104,6 +1130,18 @@ td select { padding: 2px 4px; font-size: 12px; }
     zh: { n: '碳數 n', wt: 'wt%', rt: '滯留時間 (min)', area: '面積 %', dist: '碳數分布', chrom: '峰位與正構烷烴碳數尺', nofit: '擬合點不足，無法求 α', pts: '點', fitw: '擬合' },
     en: { n: 'Carbon number, n', wt: 'wt%', rt: 'Retention time (min)', area: 'Area %', dist: 'Carbon number distribution', chrom: 'Peaks and n-alkane retention ruler', nofit: 'Too few points to fit α', pts: 'points', fitw: 'fit' },
   };
+
+  // ---------- Origin-like figure style ----------
+  const O_FONT = "Arial, Helvetica, 'Microsoft JhengHei', 'PingFang TC', sans-serif";
+  // black Arial text, black axis lines, no grid lines (geometry — frame and ticks — is added by each figure)
+  function originize(s) {
+    return s.replace(/<line\b[^>]*stroke="#e3e7e5"[^>]*\/>/g, '')
+      .replace(/font-family=(?:'[^']*'|"[^"]*")/g, `font-family="${O_FONT}"`)
+      .replace(/(fill|stroke)="(#535b58|#3d4542|#121615|#6b736f|#8a918e|#9aa39f|#444d4a|#2b3230)"/gi, '$1="#000000"');
+  }
+  const oBox = (x, y, w, h, sw) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#000000" stroke-width="${sw || 1.5}"/>`;
+  const oTick = (x1, y1, x2, y2, sw) => `<line x1="${x1}" x2="${x2}" y1="${y1}" y2="${y2}" stroke="#000000" stroke-width="${sw || 1.2}"/>`;
+  const figOS = () => state.settings.figStyle !== 'default';
   const yLabASF = (k) => `ln(W<tspan dy="${3 * k}" style="font-size:${8.5 * k}px">n</tspan><tspan dy="${-3 * k}">/n)</tspan>`;
 
   function asfChart(el, res, color, o) {
@@ -1125,22 +1163,26 @@ td select { padding: 2px 4px; font-size: 12px; }
       const a = sx(Math.max(res.lo - 0.5, x0)), b = sx(Math.min(res.hi + 0.5, x1));
       s += `<rect x="${a}" y="${m.t}" width="${Math.max(0, b - a)}" height="${ph}" style="fill:var(--fitband)"/>`;
     }
-    for (const v of yt.t) if (v >= ylo && v <= yhi) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" style="stroke:var(--grid)" stroke-width="1"/><text x="${m.l - 6 * k}" y="${sy(v) + 3.5 * k}" text-anchor="end">${tickFmt(v, yt.step)}</text>`;
+    const os = !!o.os, TK = (xa, ya, xb, yb, w) => `<line x1="${xa}" x2="${xb}" y1="${ya}" y2="${yb}" style="stroke:#000000" stroke-width="${(w || 1.2) * k}"/>`;
+    for (const v of yt.t) if (v >= ylo && v <= yhi) s += (os ? TK(m.l, sy(v), m.l + 6 * k, sy(v)) : `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" style="stroke:var(--grid)" stroke-width="1"/>`) + `<text x="${m.l - 6 * k}" y="${sy(v) + 3.5 * k}" text-anchor="end">${tickFmt(v, yt.step)}</text>`;
+    if (os) for (const v of yt.t) { const vm = v + yt.step / 2; if (vm > ylo && vm < yhi) s += TK(m.l, sy(vm), m.l + 3.5 * k, sy(vm), 1); }
     const span = x1 - x0, every = pw / span < 16 * k ? 4 : pw / span < 26 * k ? 2 : 1;
-    for (let n = Math.ceil(x0); n <= x1; n++) if (n % every === 0) s += `<text x="${sx(n)}" y="${H - m.b + 15 * k}" text-anchor="middle">${n}</text>`;
-    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}" style="stroke:var(--axis)"/>`;
+    for (let n = Math.ceil(x0); n <= x1; n++) { if (os) s += TK(sx(n), H - m.b, sx(n), H - m.b - (n % every === 0 ? 6 : 3.5) * k, n % every === 0 ? 1.2 : 1); if (n % every === 0) s += `<text x="${sx(n)}" y="${H - m.b + 15 * k}" text-anchor="middle">${n}</text>`; }
+    s += os ? `<rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" style="fill:none;stroke:#000000" stroke-width="${1.5 * k}"/>` : `<line x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}" style="stroke:var(--axis)"/>`;
     s += `<text class="lab" x="${m.l + pw / 2}" y="${H - 4 * k}" text-anchor="middle">${o.xl != null ? esc(o.xl) : L.n}</text>`;
     s += `<text class="lab" transform="translate(${12 * k} ${m.t + ph / 2}) rotate(-90)" text-anchor="middle">${o.yl != null ? esc(o.yl) : yLabASF(k)}</text>`;
     if (fit) s += `<line x1="${sx(fit.lo)}" y1="${sy(fit.icpt + fit.slope * fit.lo)}" x2="${sx(fit.hi)}" y2="${sy(fit.icpt + fit.slope * fit.hi)}" style="stroke:var(--c-fit)" stroke-width="${1.5 * k}" stroke-linecap="round" opacity="0.75"/>`;
     for (const p of pts) {
-      const inFit = fit && p.n >= fit.lo && p.n <= fit.hi;
-      const cx = sx(p.n), cy = sy(p.y);
-      s += inFit
-        ? `<circle cx="${cx}" cy="${cy}" r="${4.5 * k}" style="fill:${color};stroke:var(--surface)" stroke-width="${2 * k}"/>`
+      const inFit = !!(fit && p.inFit);
+      const cx = sx(p.n), cy = sy(p.y), q = 4.2 * k;
+      s += p.out
+        ? `<path d="M${cx - q},${cy - q}L${cx + q},${cy + q}M${cx - q},${cy + q}L${cx + q},${cy - q}" style="stroke:var(--bad)" stroke-width="${2.2 * k}" stroke-linecap="round"/>`
+        : inFit
+        ? `<circle cx="${cx}" cy="${cy}" r="${4.5 * k}" style="fill:${color};stroke:${os ? color : 'var(--surface)'}" stroke-width="${(os ? 1 : 2) * k}"/>`
         : `<circle cx="${cx}" cy="${cy}" r="${3.8 * k}" style="fill:var(--surface);stroke:${color}" stroke-width="${1.6 * k}"/>`;
       if (o.exp) continue;
       const pred = fit ? fit.icpt + fit.slope * p.n : null;
-      s += `<circle cx="${cx}" cy="${cy}" r="11" style="fill:transparent" data-tip="${tip(`<div class="tn">C${p.n}</div><div class="tr"><span>Wₙ</span><span>${(p.w * 100).toFixed(2)} %</span></div><div class="tr"><span>ln(Wₙ/n)</span><span>${p.y.toFixed(3)}</span></div>${pred != null ? `<div class="tr"><span>擬合值</span><span>${pred.toFixed(3)}</span></div>` : ''}<div class="tr"><span>${inFit ? '納入擬合' : '未納入擬合'}</span><span></span></div>`)}"/>`;
+      s += `<circle cx="${cx}" cy="${cy}" r="11" style="fill:transparent" data-tip="${tip(`<div class="tn">C${p.n}</div><div class="tr"><span>Wₙ</span><span>${(p.w * 100).toFixed(2)} %</span></div><div class="tr"><span>ln(Wₙ/n)</span><span>${p.y.toFixed(3)}</span></div>${pred != null ? `<div class="tr"><span>擬合值</span><span>${pred.toFixed(3)}</span></div>` : ''}<div class="tr"><span>${p.out === 'auto' ? `離群值，自動排除（t = ${p.t.toFixed(2)}）` : p.out === 'manual' ? '手動排除' : inFit ? '納入擬合' : '在擬合範圍外'}</span><span></span></div>${o.key && res.lo != null && p.n >= res.lo && p.n <= res.hi ? `<div class="tr"><span class="muted">點一下：${p.out === 'manual' ? '放回擬合' : '排除這一點'}</span><span></span></div>` : ''}`)}"${o.key ? ` data-exn="${o.key}:${p.n}" cursor="pointer"` : ''}/>`;
     }
     el.innerHTML = s + '</svg>';
   }
@@ -1160,7 +1202,9 @@ td select { padding: 2px 4px; font-size: 12px; }
     const band = pw / cols.length, bw = Math.min(24 * k, band * 0.72);
     const sy = (v) => m.t + ph - (v / ymax) * ph;
     let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="carbon number distribution">`;
-    for (const v of yt.t) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" style="stroke:var(--grid)"/><text x="${m.l - 6 * k}" y="${sy(v) + 3.5 * k}" text-anchor="end">${tickFmt(v, yt.step)}</text>`;
+    const os = !!o.os, TK = (xa, ya, xb, yb, w) => `<line x1="${xa}" x2="${xb}" y1="${ya}" y2="${yb}" style="stroke:#000000" stroke-width="${(w || 1.2) * k}"/>`;
+    for (const v of yt.t) s += (os ? (v <= ymax ? TK(m.l, sy(v), m.l + 6 * k, sy(v)) : '') : `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" style="stroke:var(--grid)"/>`) + `<text x="${m.l - 6 * k}" y="${sy(v) + 3.5 * k}" text-anchor="end">${tickFmt(v, yt.step)}</text>`;
+    if (os) for (const v of yt.t) { const vm = v + yt.step / 2; if (vm < ymax) s += TK(m.l, sy(vm), m.l + 3.5 * k, sy(vm), 1); }
     const every = band < 14 * k ? 4 : band < 22 * k ? 2 : 1;
     cols.forEach((n, i) => {
       const cx = m.l + band * (i + 0.5), x = cx - bw / 2;
@@ -1168,9 +1212,10 @@ td select { padding: 2px 4px; font-size: 12px; }
       CLS.forEach((c) => { const v = R.dist[c][n] || 0; if (v > 0) segs.push({ k: c, v }); });
       segs.forEach((g, j) => {
         const yTop = sy(acc + g.v), yBot = sy(acc); acc += g.v;
-        const h = yBot - yTop - (j > 0 ? 2 : 0);
+        const h = yBot - yTop - (j > 0 && !os ? 2 : 0);
         if (h <= 0.2) return;
         const top = j === segs.length - 1;
+        if (os) { s += `<rect x="${x}" y="${yTop}" width="${bw}" height="${h}" style="fill:${col(g.k)};stroke:#000000" stroke-width="${0.8 * k}"/>`; return; }
         s += top ? `<path d="${roundTop(x, yTop, bw, h, 4)}" style="fill:${col(g.k)}"/>` : `<rect x="${x}" y="${yTop}" width="${bw}" height="${h}" style="fill:${col(g.k)}"/>`;
       });
       if (n % every === 0) s += `<text x="${cx}" y="${H - m.b + 15 * k}" text-anchor="middle">${n}</text>`;
@@ -1178,7 +1223,7 @@ td select { padding: 2px 4px; font-size: 12px; }
       const rows = segs.slice().reverse().map((g) => `<div class="tr"><span><span class="sw" style="background:${col(g.k)}"></span> ${g.k}</span><span>${g.v.toFixed(2)}</span></div>`).join('');
       s += `<rect x="${m.l + band * i}" y="${m.t}" width="${band}" height="${ph}" style="fill:transparent" data-tip="${tip(`<div class="tn">C${n} · ${tot[i].toFixed(2)} %</div>${rows || '<div class="tr">—</div>'}`)}"/>`;
     });
-    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(0)}" y2="${sy(0)}" style="stroke:var(--axis)"/>`;
+    s += os ? `<rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" style="fill:none;stroke:#000000" stroke-width="${1.5 * k}"/>` : `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(0)}" y2="${sy(0)}" style="stroke:var(--axis)"/>`;
     s += `<text class="lab" x="${m.l + pw / 2}" y="${H - 4 * k}" text-anchor="middle">${o.xl != null ? esc(o.xl) : L.n}</text>`;
     s += `<text class="lab" transform="translate(${12 * k} ${m.t + ph / 2}) rotate(-90)" text-anchor="middle">${o.yl != null ? esc(o.yl) : L.wt}</text>`;
     el.innerHTML = s + '</svg>';
@@ -1194,7 +1239,8 @@ td select { padding: 2px 4px; font-size: 12px; }
     const yt = nice(0, wmax, 4), ymax = Math.max(wmax, yt.t[yt.t.length - 1]);
     const sx = (t) => m.l + ((t - rt0) / (rtMax - rt0)) * pw, sy = (v) => m.t + ph - (v / ymax) * ph;
     let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="peaks by retention time">`;
-    for (const v of yt.t) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" style="stroke:var(--grid)"/><text x="${m.l - 6 * k}" y="${sy(v) + 3.5 * k}" text-anchor="end">${tickFmt(v, yt.step)}</text>`;
+    const os = !!o.os, TK = (xa, ya, xb, yb, w) => `<line x1="${xa}" x2="${xb}" y1="${ya}" y2="${yb}" style="stroke:#000000" stroke-width="${(w || 1.2) * k}"/>`;
+    for (const v of yt.t) s += (os ? (v <= ymax ? TK(m.l, sy(v), m.l + 6 * k, sy(v)) : '') : `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" style="stroke:var(--grid)"/>`) + `<text x="${m.l - 6 * k}" y="${sy(v) + 3.5 * k}" text-anchor="end">${tickFmt(v, yt.step)}</text>`;
     let lastLab = -1e9;
     for (const a of R.anchors) {
       if (a.rt < rt0 || a.rt > rtMax) continue;
@@ -1203,13 +1249,13 @@ td select { padding: 2px 4px; font-size: 12px; }
       if (x - lastLab > 24 * k) { s += `<text x="${x}" y="${m.t - 9 * k}" text-anchor="middle" style="fill:${a.virtual ? 'var(--muted)' : 'var(--ink-2)'}" opacity="${a.virtual ? 0.7 : 1}">C${a.c}</text>`; lastLab = x; }
     }
     const xt = nice(rt0, rtMax, Math.max(4, Math.round(pw / (90 * k))));
-    for (const v of xt.t) if (v >= rt0) s += `<text x="${sx(v)}" y="${H - m.b + 15 * k}" text-anchor="middle">${tickFmt(v, xt.step)}</text>`;
+    for (const v of xt.t) if (v >= rt0) s += (os ? TK(sx(v), H - m.b, sx(v), H - m.b - 6 * k) : '') + `<text x="${sx(v)}" y="${H - m.b + 15 * k}" text-anchor="middle">${tickFmt(v, xt.step)}</text>`;
     for (const p of P) {
       const x = sx(p.rt), y = sy(p.excluded ? Math.min(p.raw, ymax) : p.w);
       s += `<line x1="${x}" x2="${x}" y1="${sy(0)}" y2="${Math.min(sy(0) - 1, y)}" style="stroke:${p.excluded ? 'var(--axis)' : col(p.cls)}" stroke-width="${1.6 * Math.sqrt(k)}"/>`;
       if (!o.exp) s += `<rect x="${x - 3}" y="${m.t}" width="6" height="${ph}" style="fill:transparent" data-tip="${tip(peakTip(p))}"/>`;
     }
-    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(0)}" y2="${sy(0)}" style="stroke:var(--axis)"/>`;
+    s += os ? `<rect x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" style="fill:none;stroke:#000000" stroke-width="${1.5 * k}"/>` : `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(0)}" y2="${sy(0)}" style="stroke:var(--axis)"/>`;
     s += `<text class="lab" x="${m.l + pw / 2}" y="${H - 4 * k}" text-anchor="middle">${o.xl != null ? esc(o.xl) : L.rt}</text>`;
     s += `<text class="lab" transform="translate(${12 * k} ${m.t + ph / 2}) rotate(-90)" text-anchor="middle">${o.yl != null ? esc(o.yl) : L.area}</text>`;
     el.innerHTML = s + '</svg>';
@@ -1258,7 +1304,7 @@ td select { padding: 2px 4px; font-size: 12px; }
     document.body.appendChild(host);
     const div = document.createElement('div'); host.appendChild(div);
     const xl = F.x != null && F.x !== '' ? F.x : null, yl = F.y != null && F.y !== '' ? F.y : null;
-    const o = { k, lang, exp: true, band, xl, yl };
+    const OSF = figOS(), o = { k, lang, exp: true, band, xl, yl, os: OSF };
     let W, H, legend = null;
     if (kind.indexOf('asf-') === 0) {
       const P = PANELS.find((x) => 'asf-' + x.key === kind), a = RR.asf[P.key];
@@ -1287,12 +1333,12 @@ td select { padding: 2px 4px; font-size: 12px; }
       const c = cs[i];
       n.setAttribute('fill', c.fill); n.setAttribute('stroke', c.stroke);
       if (c.strokeWidth) n.setAttribute('stroke-width', c.strokeWidth);
-      if (n.tagName === 'text' || n.tagName === 'tspan') { n.setAttribute('font-family', c.fontFamily); n.setAttribute('font-size', c.fontSize); n.setAttribute('font-weight', c.fontWeight); }
+      if (n.tagName === 'text' || n.tagName === 'tspan') { n.setAttribute('font-family', OSF ? O_FONT : c.fontFamily); n.setAttribute('font-size', c.fontSize); n.setAttribute('font-weight', c.fontWeight); if (OSF) n.setAttribute('fill', '#000000'); }
       n.removeAttribute('style'); n.removeAttribute('class');
     });
     const hs = getComputedStyle(host);
-    const ink = hs.getPropertyValue('--ink').trim() || '#121615';
-    const ink2 = hs.getPropertyValue('--ink-2').trim() || '#444d4a';
+    const ink = OSF ? '#000000' : hs.getPropertyValue('--ink').trim() || '#121615';
+    const ink2 = OSF ? '#000000' : hs.getPropertyValue('--ink-2').trim() || '#444d4a';
     const legendCol = legend ? Object.fromEntries(legend.map((c) => [c, hs.getPropertyValue(CV[c]).trim()])) : null;
     const inner = [...svg.childNodes].map((n) => new XMLSerializer().serializeToString(n)).join('');
     host.remove();
@@ -1306,16 +1352,17 @@ td select { padding: 2px 4px; font-size: 12px; }
       legend.forEach((c) => {
         const tw = cv.measureText(c).width;
         if (x + 18 + tw > W + padX) { x = padX; y += 22; }
-        leg += `<rect x="${x}" y="${y - 10}" width="12" height="12" rx="3" fill="${legendCol[c]}"/><text x="${x + 18}" y="${y}" font-family='${SANS}' font-size="13" fill="${ink2}">${esc(c)}</text>`;
+        leg += `<rect x="${x}" y="${y - 10}" width="12" height="12" rx="${OSF ? 0 : 3}" fill="${legendCol[c]}"${OSF && kind === 'dist' ? ' stroke="#000000" stroke-width="0.8"' : ''}/><text x="${x + 18}" y="${y}" font-family='${SANS}' font-size="13" fill="${ink2}">${esc(c)}</text>`;
         x += 18 + tw + 20;
       });
       y += 18;
     }
     const TW = W + padX * 2, TH = y + H + 14;
-    const inner2 = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` +
+    let inner2 = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` +
       (hasTitle ? `<text x="${padX}" y="${titleY}" font-family='${SANS}' font-size="18" font-weight="600" fill="${ink}">${esc(title)}</text>` : '') +
       (sub ? `<text x="${padX}" y="${subY}" font-family='${SANS}' font-size="14" fill="${ink2}">${esc(sub)}</text>` : '') +
       leg + `<g transform="translate(${padX} ${y})">${inner}</g>`;
+    if (OSF) inner2 = originize(inner2);
     const out = `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${inner2}</svg>`;
     return { svg: out, body: inner2, w: TW, h: TH, base: `${safeName(smp.label)}_${kind}${lang === 'en' ? '_en' : ''}` };
   }
@@ -1330,6 +1377,7 @@ td select { padding: 2px 4px; font-size: 12px; }
     $('#figCtl').innerHTML = `
       <label class="frow" for="figKind"><span>圖片</span><select id="figKind">${FIGS.map(([k2, l]) => `<option value="${k2}"${k2 === kind ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
       <div class="frow"><span>標籤語言</span><span class="seg">${[['zh', '中文'], ['en', 'English']].map(([k2, l]) => `<button type="button" data-elang="${k2}" aria-pressed="${lang === k2}">${l}</button>`).join('')}</span></div>
+      <div class="frow"><span>圖片風格</span><span><span class="seg">${[['origin', 'Origin'], ['default', '原本']].map(([k2, l]) => `<button type="button" data-fstyle="${k2}" aria-pressed="${(figOS() ? 'origin' : 'default') === k2}">${l}</button>`).join('')}</span> <span class="muted small">所有匯出圖共用</span></span></div>
       <label class="frow" for="figTitle"><span>標題</span><input type="text" id="figTitle" value="${v(F.title)}" placeholder="${v(D.title)}"></label>
       <div class="frow"><span>副標題</span><span class="fsub"><input type="checkbox" id="figShowSub"${showSub ? ' checked' : ''} aria-label="顯示副標題"><input type="text" id="figSub" value="${v(F.sub)}" placeholder="${v(D.sub)}"${showSub ? '' : ' disabled'} aria-label="副標題文字"></span></div>
       <label class="frow" for="figX"><span>X 軸</span><input type="text" id="figX" value="${v(F.x)}" placeholder="${v(D.x)}"></label>
@@ -1462,6 +1510,7 @@ td select { padding: 2px 4px; font-size: 12px; }
     const TH = pad * 2 + titleH + sum(rowH) + gap * Math.max(0, used(rowH) - 1);
     let body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>`;
     if (titleH) body += `<text x="${TW / 2}" y="${pad + 26}" text-anchor="middle" font-family='${SANS}' font-size="24" font-weight="600" fill="#121615">${esc(G.title.trim())}</text>`;
+    if (figOS()) body = originize(body);
     place.forEach(([f, x, y]) => { body += `<g transform="translate(${x} ${y})">${f.body}</g>`; });
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${body}</svg>`, w: TW, h: TH, base: `ASF_grid_${G.m}x${G.n}` };
   }
@@ -1570,7 +1619,7 @@ td select { padding: 2px 4px; font-size: 12px; }
       let pts, fit = null;
       if (isASF) {
         const a = RR.asf[key]; fit = a.fit;
-        pts = a.points.map((p) => ({ n: p.n, y: p.y, inFit: !!(fit && p.n >= fit.lo && p.n <= fit.hi) }));
+        pts = a.points.map((p) => ({ n: p.n, y: p.y, inFit: !!(fit && p.inFit) }));
       } else {
         const d = ovSet(RR, O.distCls), ns = Object.keys(d).map(Number).filter((n) => d[n] > 0).sort((x, y) => x - y);
         const tot = ns.reduce((t, n) => t + d[n], 0) || 1;
@@ -1595,10 +1644,12 @@ td select { padding: 2px 4px; font-size: 12px; }
     const sx = (n) => m.l + ((n - x0) / (x1 - x0)) * pw, sy = (v) => m.t + ((yhi - v) / (yhi - ylo)) * ph;
     const TICK = `font-family='${SANS}' font-size="${(11 * k).toFixed(1)}" fill="#535b58"`, LAB = `font-family='${SANS}' font-size="${(11.5 * k).toFixed(1)}" fill="#3d4542"`;
     let g = '';
-    for (const v of yt.t) if (v >= ylo - 1e-9 && v <= yhi + 1e-9) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="#e3e7e5" stroke-width="1"/><text x="${m.l - 8}" y="${sy(v) + 5}" text-anchor="end" ${TICK}>${tickFmt(v, yt.step)}</text>`;
+    const os = figOS();
+    for (const v of yt.t) if (v >= ylo - 1e-9 && v <= yhi + 1e-9) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="#e3e7e5" stroke-width="1"/><text x="${m.l - 8}" y="${sy(v) + 5}" text-anchor="end" ${TICK}>${tickFmt(v, yt.step)}</text>` + (os ? oTick(m.l, sy(v), m.l + 8, sy(v), 1.5) : '');
+    if (os) for (const v of yt.t) { const vm = v + yt.step / 2; if (vm > ylo && vm < yhi) g += oTick(m.l, sy(vm), m.l + 4.5, sy(vm), 1.2); }
     const every = pw / (x1 - x0) < 22 ? 4 : pw / (x1 - x0) < 34 ? 2 : 1;
-    for (let n = Math.ceil(x0); n <= x1; n++) if (n % every === 0) g += `<text x="${sx(n)}" y="${H - m.b + 22}" text-anchor="middle" ${TICK}>${n}</text>`;
-    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}" stroke="#9aa39f" stroke-width="1"/>`;
+    for (let n = Math.ceil(x0); n <= x1; n++) { if (os) g += oTick(sx(n), H - m.b, sx(n), H - m.b - (n % every === 0 ? 8 : 4.5), n % every === 0 ? 1.5 : 1.2); if (n % every === 0) g += `<text x="${sx(n)}" y="${H - m.b + 22}" text-anchor="middle" ${TICK}>${n}</text>`; }
+    g += os ? oBox(m.l, m.t, pw, ph, 2) : `<line x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}" stroke="#9aa39f" stroke-width="1"/>`;
     const xl = O.x && O.x.trim() ? esc(O.x) : esc(D.x);
     const yl = O.y && O.y.trim() ? esc(O.y) : (isASF ? `ln(W<tspan dy="4" font-size="${(8.5 * k).toFixed(1)}">n</tspan><tspan dy="-4">/n)</tspan>` : esc(D.y));
     g += `<text x="${m.l + pw / 2}" y="${H - 8}" text-anchor="middle" ${LAB}>${xl}</text>`;
@@ -1612,7 +1663,7 @@ td select { padding: 2px 4px; font-size: 12px; }
       }
     });
     ser.forEach((x) => x.pts.forEach((p) => {
-      g += p.inFit ? marker(x.shape, sx(p.n), sy(p.y), 5.6, x.color, '#ffffff', 1.8) : marker(x.shape, sx(p.n), sy(p.y), 4.8, '#ffffff', x.color, 2);
+      g += p.inFit ? marker(x.shape, sx(p.n), sy(p.y), 5.6, x.color, os ? x.color : '#ffffff', os ? 1 : 1.8) : marker(x.shape, sx(p.n), sy(p.y), 4.8, '#ffffff', x.color, 2);
     }));
     // header + legend
     let title = O.title && O.title.trim() ? O.title.trim() : D.title;
@@ -1625,13 +1676,14 @@ td select { padding: 2px 4px; font-size: 12px; }
       const tw = cv.measureText(x.label).width, wItem = 22 + tw + 24;
       if (lx + wItem > W + padX && lx > padX) { lx = padX; y += 24; }
       leg += (isASF && O.showFit ? `<line x1="${lx - 2}" x2="${lx + 16}" y1="${y - 5}" y2="${y - 5}" stroke="${x.color}" stroke-width="2.2"/>` : (!isASF ? `<line x1="${lx - 2}" x2="${lx + 16}" y1="${y - 5}" y2="${y - 5}" stroke="${x.color}" stroke-width="2.2"/>` : '')) +
-        marker(x.shape, lx + 7, y - 5, 5.2, x.color, '#ffffff', 1.5) +
+        marker(x.shape, lx + 7, y - 5, 5.2, x.color, os ? x.color : '#ffffff', os ? 1 : 1.5) +
         `<text x="${lx + 22}" y="${y}" font-family='${SANS}' font-size="14" fill="#3d4542">${esc(x.label)}</text>`;
       lx += wItem;
     });
     y += 16;
     const TW = W + padX * 2, TH = y + H + 10;
-    const body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` + (hasTitle ? `<text x="${padX}" y="30" font-family='${SANS}' font-size="18" font-weight="600" fill="#121615">${esc(title)}</text>` : '') + leg + `<g transform="translate(${padX} ${y})">${g}</g>`;
+    let body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` + (hasTitle ? `<text x="${padX}" y="30" font-family='${SANS}' font-size="18" font-weight="600" fill="#121615">${esc(title)}</text>` : '') + leg + `<g transform="translate(${padX} ${y})">${g}</g>`;
+    if (os) body = originize(body);
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${body}</svg>`, body, w: TW, h: TH, base: `overlay${idx + 1}_${O.kind}${O.kind === 'dist' ? '_' + O.distCls : ''}${lang === 'en' ? '_en' : ''}` };
   }
   function renderOverlayEditor() {
@@ -1825,8 +1877,9 @@ td select { padding: 2px 4px; font-size: 12px; }
     const yt = nice(ymin, ymax, 5);
     if (A.ymax == null || A.ymax === '') ymax = Math.max(ymax, yt.t[yt.t.length - 1]);
     const sy = (v) => m.t + ph - ((Math.max(ymin, Math.min(ymax, v)) - ymin) / (ymax - ymin)) * ph;
-    let g = '';
-    for (const v of yt.t) if (v >= ymin - 1e-9 && v <= ymax + 1e-9) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="#e3e7e5" stroke-width="1"/><text x="${m.l - 8}" y="${sy(v) + 5}" text-anchor="end" font-family='${SANS}' font-size="${TICK}" fill="#535b58">${tickFmt(v, yt.step)}</text>`;
+    let g = ''; const os = figOS();
+    for (const v of yt.t) if (v >= ymin - 1e-9 && v <= ymax + 1e-9) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="#e3e7e5" stroke-width="1"/><text x="${m.l - 8}" y="${sy(v) + 5}" text-anchor="end" font-family='${SANS}' font-size="${TICK}" fill="#535b58">${tickFmt(v, yt.step)}</text>` + (os ? oTick(m.l, sy(v), m.l + 7, sy(v)) : '');
+    if (os) for (const v of yt.t) { const vm = v + yt.step / 2; if (vm > ymin && vm < ymax) g += oTick(m.l, sy(vm), m.l + 4, sy(vm), 1); }
     let x = m.l + gap;
     rows.forEach((r, i) => {
       const w = r.it.w > 0 ? +r.it.w : bw0;
@@ -1834,7 +1887,7 @@ td select { padding: 2px 4px; font-size: 12px; }
         const v = val(r, mm), bx = x + j * (w + inner);
         if (v == null) { g += `<text x="${bx + w / 2}" y="${sy(ymin) - 6}" text-anchor="middle" font-family='${SANS}' font-size="${VAL - 2}" fill="#8a918e">${esc(T.na)}</text>`; return; }
         const yTop = sy(v), h = sy(ymin) - yTop;
-        if (h > 0.5) g += `<path d="${roundTop(bx, yTop, w, h, Math.min(4, w / 3))}" fill="${alColor(mm)}"/>`;
+        if (h > 0.5) g += os ? `<rect x="${bx}" y="${yTop}" width="${w}" height="${h}" fill="${alColor(mm)}" stroke="#000000" stroke-width="1"/>` : `<path d="${roundTop(bx, yTop, w, h, Math.min(4, w / 3))}" fill="${alColor(mm)}"/>`;
         if (A.label !== 'none') {
           const f = r.fit[mm], cx = bx + w / 2, L2 = labOf(f);
           if (vRot) g += `<text transform="translate(${cx + VAL * 0.36} ${yTop - 6}) rotate(-90)" text-anchor="start" font-family='${SANS}' font-size="${VAL}" fill="#3d4542">${L2.main}${L2.sub ? `<tspan fill="#6b736f" font-size="${VAL - 2}">  ${esc(L2.sub)}</tspan>` : ''}</text>`;
@@ -1850,7 +1903,7 @@ td select { padding: 2px 4px; font-size: 12px; }
         : `<text x="${cx}" y="${ly}" text-anchor="middle" font-family='${SANS}' font-size="${TICK}" fill="#3d4542">${esc(r.name)}</text>`;
       x += slotW[i];
     });
-    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(ymin)}" y2="${sy(ymin)}" stroke="#9aa39f" stroke-width="1"/>`;
+    g += os ? oBox(m.l, m.t, plotW, ph) : `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(ymin)}" y2="${sy(ymin)}" stroke="#9aa39f" stroke-width="1"/>`;
     if (xlabel) g += `<text x="${m.l + plotW / 2}" y="${H - 10}" text-anchor="middle" font-family='${SANS}' font-size="${LAB}" fill="#3d4542">${esc(xlabel)}</text>`;
     g += yShort
       ? `<text x="${m.l - 34}" y="${m.t + ph / 2 + 5}" text-anchor="middle" font-family='${SANS}' font-size="${LAB + 2}" fill="#3d4542">${esc(ylabel)}</text>`
@@ -1862,11 +1915,12 @@ td select { padding: 2px 4px; font-size: 12px; }
     let y = hasTitle ? 62 : 24, leg = '';
     if (mets.length > 1) {
       let lx = padX;
-      mets.forEach((mm) => { leg += `<rect x="${lx}" y="${y - 11}" width="13" height="13" rx="3" fill="${alColor(mm)}"/><text x="${lx + 19}" y="${y}" font-family='${SANS}' font-size="14" fill="#3d4542">${AL_NAME[mm]}</text>`; lx += 19 + textW(AL_NAME[mm], 14) + 22; });
+      mets.forEach((mm) => { leg += `<rect x="${lx}" y="${y - 11}" width="13" height="13" rx="${os ? 0 : 3}" fill="${alColor(mm)}"${os ? ' stroke="#000000" stroke-width="1"' : ''}/><text x="${lx + 19}" y="${y}" font-family='${SANS}' font-size="14" fill="#3d4542">${AL_NAME[mm]}</text>`; lx += 19 + textW(AL_NAME[mm], 14) + 22; });
       y += 14;
     } else y -= 10;
     const TW = W + padX * 2, TH = y + H + 6;
-    const body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` + (hasTitle ? `<text x="${padX}" y="30" font-family='${SANS}' font-size="18" font-weight="600" fill="#121615">${esc(title)}</text>` : '') + leg + `<g transform="translate(${padX} ${y})">${g}</g>`;
+    let body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` + (hasTitle ? `<text x="${padX}" y="30" font-family='${SANS}' font-size="18" font-weight="600" fill="#121615">${esc(title)}</text>` : '') + leg + `<g transform="translate(${padX} ${y})">${g}</g>`;
+    if (os) body = originize(body);
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${body}</svg>`, body, w: TW, h: TH, base: `alpha_bar${isR2 ? '_r2' : ''}${A.lang === 'en' ? '_en' : ''}` };
   }
 
@@ -1913,6 +1967,7 @@ td select { padding: 2px 4px; font-size: 12px; }
         x += colW[c];
       });
     });
+    if (figOS()) s = originize(s);
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${s}</svg>`, body: s, w: TW, h: TH, base: `alpha_table${A.lang === 'en' ? '_en' : ''}` };
   }
 
@@ -1992,7 +2047,7 @@ td select { padding: 2px 4px; font-size: 12px; }
     save();
   }
   function renderCharts() {
-    PANELS.forEach((P) => asfChart($('#ch-' + P.key), R.asf[P.key], P.color, { band: state.settings.showBand !== false }));
+    PANELS.forEach((P) => asfChart($('#ch-' + P.key), R.asf[P.key], P.color, { band: state.settings.showBand !== false, key: P.key }));
     distChart($('#dist'), R); chromChart($('#chrom'), R);
   }
 
@@ -2046,6 +2101,14 @@ td select { padding: 2px 4px; font-size: 12px; }
     $('#statsNote').innerHTML = `C8–C16 為航油範圍；O/P = alkene ÷ (n+iso)；「碳數不符」= 名稱碳數與 RT 窗口差 ≥ 3 <button type="button" class="linkbtn" data-jump="flagged">看是哪些峰</button>`;
   }
 
+  // excluded points under each ASF chart; how much α moved compared with keeping every point in range
+  function outNote(a, fr, key) {
+    const ex = a.fit ? a.fit.excluded : a.points.filter((p) => p.out).map((p) => ({ n: p.n, why: p.out, t: p.t }));
+    if (!ex.length) return a.points.length ? `<div class="muted small" style="margin-top:4px">點圖上擬合範圍內的點可以排除或放回${fr.auto ? '；自動檢查沒有找到離群值' : ''}。</div>` : '';
+    let cmp = '';
+    if (a.fit && a.lo != null) { const all = ASFCore.asfFit(Object.fromEntries(a.points.map((p) => [p.n, p.w])), a.lo, a.hi); if (all.fit) cmp = `；全部納入時 α = ${all.fit.alpha.toFixed(3)}、R² ${all.fit.r2.toFixed(3)}（${all.fit.m} 點）`; }
+    return `<div class="note" style="margin-top:6px">排除 ${ex.map((e) => `C${e.n}（${e.why === 'auto' ? `自動，t = ${e.t.toFixed(2)}` : '手動'}）`).join('、')}${cmp}。<button type="button" class="linkbtn" data-fitexclr="${key}">全部放回</button></div>`;
+  }
   function renderASF(R) {
     const st = state.settings, p = per(state.active);
     $('#asf').innerHTML = PANELS.map((P) => {
@@ -2058,9 +2121,10 @@ td select { padding: 2px 4px; font-size: 12px; }
       const sw = P.key === 'total' ? 'var(--ink-2)' : P.color;
       return `<div class="card asf">
         <h2><span class="sw" style="background:${sw}"></span>${P.title} ASF</h2>
-        <div class="alpha"><span class="a num">α = ${fit ? fit.alpha.toFixed(3) : '—'}</span><span class="meta">${fit ? `R² ${fit.r2.toFixed(3)} · C${fit.lo}–C${fit.hi} · ${fit.m} 點` : ''}</span></div>
-        <div class="ctl"><span>${sub}</span><span>擬合 C <input type="number" min="1" max="99" step="1" id="lo-${P.key}" data-fit="${P.key}" data-end="lo" value="${fr.lo ?? ''}" placeholder="${a.lo ?? ''}" aria-label="擬合起點碳數"> – <input type="number" min="1" max="99" step="1" id="hi-${P.key}" data-fit="${P.key}" data-end="hi" value="${fr.hi ?? ''}" placeholder="${a.hi ?? ''}" aria-label="擬合終點碳數"></span>${fr.lo != null || fr.hi != null ? `<button type="button" class="linkbtn" data-fitreset="${P.key}">自動</button>` : ''}<button type="button" class="linkbtn" data-copy="${P.key}">複製數據</button>${dlBtns('asf-' + P.key)}</div>
+        <div class="alpha"><span class="a num">α = ${fit ? fit.alpha.toFixed(3) : '—'}</span><span class="meta">${fit ? `R² ${fit.r2.toFixed(3)} · C${fit.lo}–C${fit.hi} · ${fit.m} 點${fit.excluded.length ? `（排除 ${fit.excluded.length}）` : ''}` : ''}</span></div>
+        <div class="ctl"><span>${sub}</span><span>擬合 C <input type="number" min="1" max="99" step="1" id="lo-${P.key}" data-fit="${P.key}" data-end="lo" value="${fr.lo ?? ''}" placeholder="${a.lo ?? ''}" aria-label="擬合起點碳數"> – <input type="number" min="1" max="99" step="1" id="hi-${P.key}" data-fit="${P.key}" data-end="hi" value="${fr.hi ?? ''}" placeholder="${a.hi ?? ''}" aria-label="擬合終點碳數"></span>${fr.lo != null || fr.hi != null ? `<button type="button" class="linkbtn" data-fitreset="${P.key}">自動</button>` : ''}<label class="nowrap" for="oa-${P.key}"><input type="checkbox" id="oa-${P.key}" data-fitauto="${P.key}"${fr.auto ? ' checked' : ''}> 自動移除離群值</label>${fr.auto ? `<span class="nowrap">|t| > <input type="number" min="1.5" max="10" step="0.5" id="ot-${P.key}" data-fitthr="${P.key}" value="${fr.thr ?? ''}" placeholder="3" style="width:52px" aria-label="離群門檻"></span>` : ''}<button type="button" class="linkbtn" data-copy="${P.key}">複製數據</button>${dlBtns('asf-' + P.key)}</div>
         <div class="chart" id="ch-${P.key}"></div>
+        ${outNote(a, fr, P.key)}
         ${warn ? `<div class="note warn">${warn}</div>` : ''}
       </div>`;
     }).join('');
@@ -2182,9 +2246,19 @@ td select { padding: 2px 4px; font-size: 12px; }
       render(); return;
     }
     const fc = t.closest('[data-fc]'); if (fc) { state.filter.cls = fc.getAttribute('data-fc'); renderPeaks(R); save(); return; }
-    const fr = t.closest('[data-fitreset]'); if (fr) { per(state.active).fit[fr.getAttribute('data-fitreset')] = {}; render(); return; }
+    const fr = t.closest('[data-fitreset]'); if (fr) { const f = per(state.active).fit[fr.getAttribute('data-fitreset')]; if (f) { delete f.lo; delete f.hi; } render(); return; }
+    const xn = t.closest('[data-exn]'); if (xn) {
+      const [k, n] = xn.getAttribute('data-exn').split(':'), P2 = per(state.active), f = P2.fit[k] = P2.fit[k] || {}, a = R.asf[k], nn = +n;
+      if (a.lo == null || nn < a.lo || nn > a.hi) { toast(`C${nn} 不在擬合範圍 C${a.lo}–C${a.hi} 內，先調整範圍`); return; }
+      const pt = a.points.find((p) => p.n === nn), ex = new Set(f.ex || []);
+      if (pt && pt.out === 'auto') { toast(`C${nn} 是自動判定的離群值；關掉「自動移除離群值」或提高門檻才會放回`); return; }
+      if (ex.has(nn)) ex.delete(nn); else ex.add(nn);
+      f.ex = [...ex].sort((x, y) => x - y); tipEl.hidden = true; render(); return;
+    }
+    const xc = t.closest('[data-fitexclr]'); if (xc) { const f = per(state.active).fit[xc.getAttribute('data-fitexclr')]; if (f) { f.ex = []; f.auto = false; } render(); return; }
     const cp = t.closest('[data-copy]'); if (cp) { copyASF(cp.getAttribute('data-copy')); return; }
     const im = t.closest('[data-img]'); if (im) { downloadFigure(im.getAttribute('data-img'), im.getAttribute('data-fmt')); return; }
+    const fsb = t.closest('[data-fstyle]'); if (fsb) { state.settings.figStyle = fsb.getAttribute('data-fstyle'); render(); return; }
     const el = t.closest('[data-elang]'); if (el) { state.settings.exportLang = el.getAttribute('data-elang'); renderFigEditor(); save(); return; }
     const fe = t.closest('[data-figedit]'); if (fe) { state.figKind = fe.getAttribute('data-figedit'); renderFigEditor(); $('#figCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); save(); return; }
     const rs = t.closest('[data-ristore]');
@@ -2287,6 +2361,8 @@ td select { padding: 2px 4px; font-size: 12px; }
     if (t.id === 'alkMode') { state.settings.alkaneMode = t.value; render(); return; }
     if (t.id === 'rulerSrc') { P.ruler = t.value === 'manual' ? P.ruler : { src: t.value }; render(); return; }
     if (t.id === 'onlyFlag') { state.filter.flagged = t.checked; renderPeaks(R); save(); return; }
+    if (t.dataset.fitauto) { const f = P.fit[t.dataset.fitauto] = P.fit[t.dataset.fitauto] || {}; f.auto = t.checked; render(); return; }
+    if (t.dataset.fitthr) { const f = P.fit[t.dataset.fitthr] = P.fit[t.dataset.fitthr] || {}, v = parseFloat(t.value); f.thr = isFinite(v) && v > 0 ? v : null; render(); return; }
     if (t.dataset.fit) { const v = parseInt(t.value, 10); P.fit[t.dataset.fit] = P.fit[t.dataset.fit] || {}; P.fit[t.dataset.fit][t.dataset.end] = isFinite(v) ? v : null; render(); return; }
     if (t.dataset.rrt != null) { const i = +t.dataset.rrt, v = parseFloat(t.value); setManualRuler((A) => { A[i].rt = v; }); return; }
     if (t.dataset.cls) {
@@ -2336,12 +2412,12 @@ td select { padding: 2px 4px; font-size: 12px; }
   }
   function asfRows(a) {
     const fit = a.fit;
-    return a.points.map((p) => [p.n, +(p.w * 100).toFixed(4), +p.y.toFixed(5), fit && p.n >= fit.lo && p.n <= fit.hi ? 1 : 0]);
+    return a.points.map((p) => [p.n, +(p.w * 100).toFixed(4), +p.y.toFixed(5), fit && p.inFit ? 1 : 0, p.out === 'auto' ? `outlier (auto, t=${p.t.toFixed(2)})` : p.out === 'manual' ? 'excluded (manual)' : '']);
   }
   function copyASF(k) {
     const a = R.asf[k], fit = a.fit;
-    const lines = [['n', 'W_n (%)', 'ln(W_n/n)', 'in_fit'].join('\t')].concat(asfRows(a).map((r) => r.join('\t')));
-    if (fit) lines.push('', `alpha\t${fit.alpha.toFixed(4)}`, `slope\t${fit.slope.toFixed(5)}`, `intercept\t${fit.icpt.toFixed(5)}`, `R2\t${fit.r2.toFixed(4)}`, `fit range\tC${fit.lo}-C${fit.hi}`);
+    const lines = [['n', 'W_n (%)', 'ln(W_n/n)', 'in_fit', 'excluded'].join('\t')].concat(asfRows(a).map((r) => r.join('\t')));
+    if (fit) lines.push('', `alpha\t${fit.alpha.toFixed(4)}`, `slope\t${fit.slope.toFixed(5)}`, `intercept\t${fit.icpt.toFixed(5)}`, `R2\t${fit.r2.toFixed(4)}`, `fit range\tC${fit.lo}-C${fit.hi}`, `points used\t${fit.m}`);
     copyText(lines.join('\n'), `已複製 ${k} ASF 數據，可直接貼到 Excel / Origin`);
   }
   const peakHeader = ['RT (min)', 'Name', 'Class', 'Class source', 'Library-based class', 'C_name', 'RI', 'C_RT', 'C_used', 'W (%)', 'Raw conc (%)', 'Excluded', 'Edited', 'Flags'];
@@ -2372,9 +2448,9 @@ td select { padding: 2px 4px; font-size: 12px; }
       const asfAoa = [];
       ['total', 'alkane', 'alkene'].forEach((k) => {
         const a = r.asf[k];
-        asfAoa.push([k.toUpperCase()], ['n', 'W_n (%)', 'ln(W_n/n)', 'in_fit']);
+        asfAoa.push([k.toUpperCase()], ['n', 'W_n (%)', 'ln(W_n/n)', 'in_fit', 'excluded']);
         asfRows(a).forEach((row) => asfAoa.push(row));
-        if (a.fit) asfAoa.push(['alpha', +a.fit.alpha.toFixed(4)], ['slope', +a.fit.slope.toFixed(5)], ['intercept', +a.fit.icpt.toFixed(5)], ['R2', +a.fit.r2.toFixed(4)], ['fit range', `C${a.fit.lo}-C${a.fit.hi}`]);
+        if (a.fit) asfAoa.push(['alpha', +a.fit.alpha.toFixed(4)], ['slope', +a.fit.slope.toFixed(5)], ['intercept', +a.fit.icpt.toFixed(5)], ['R2', +a.fit.r2.toFixed(4)], ['fit range', `C${a.fit.lo}-C${a.fit.hi}`], ['points used', a.fit.m]);
         asfAoa.push([]);
       });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(asfAoa), tag + ' ASF');

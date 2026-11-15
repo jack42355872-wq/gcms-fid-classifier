@@ -758,6 +758,22 @@ td.nowrap { white-space: nowrap; }
   const FTYPES = [['stack', '堆疊＋右軸疊圖'], ['bar', '分組長條'], ['line', '折線'], ['dist', '單筆分布']];
   const XVARS = [['run', '依順序（顯示名稱）'], ['T', '溫度 T'], ['P', '壓力 P'], ['GHSV', 'GHSV'], ['TOS', '反應時間 TOS'], ['time', '時間軸（每個時間點點選一筆）']];
 
+
+  // ---------- Origin-like figure style ----------
+  const O_FONT = "Arial, Helvetica, 'Microsoft JhengHei', 'PingFang TC', sans-serif";
+  // black Arial text, black axis lines, no grid lines (geometry — frame and ticks — is added by each figure)
+  function originize(s) {
+    return s.replace(/<line\b[^>]*stroke="#e3e7e5"[^>]*\/>/g, '')
+      .replace(/font-family=(?:'[^']*'|"[^"]*")/g, `font-family="${O_FONT}"`)
+      .replace(/(fill|stroke)="(#535b58|#3d4542|#121615|#6b736f|#8a918e|#9aa39f|#444d4a|#2b3230)"/gi, '$1="#000000"');
+  }
+  const oBox = (x, y, w, h, sw) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#000000" stroke-width="${sw || 1.5}"/>`;
+  const oTick = (x1, y1, x2, y2, sw) => `<line x1="${x1}" x2="${x2}" y1="${y1}" y2="${y2}" stroke="#000000" stroke-width="${sw || 1.2}"/>`;
+  let OS = false; // set by buildFig / buildGrid from the shared figure style
+  const figStyle = () => (state.figStyle === 'default' ? 'default' : 'origin');
+  const bs = () => (OS ? ' stroke="#000000" stroke-width="1"' : '');
+  const axBox = (x, y, w) => (OS ? oBox(x, y, w, PH) : '');
+
   // ---------- small drawing helpers ----------
   function nice(min, max, n) {
     if (!(max > min)) { min -= 1; max += 1; }
@@ -767,8 +783,9 @@ td.nowrap { white-space: nowrap; }
     return { t, step };
   }
   const tickFmt = (v, step) => (step >= 1 ? v.toFixed(0) : v.toFixed(Math.min(3, Math.ceil(-Math.log10(step)))));
-  const roundTop = (x, y, w, h, r) => { r = Math.min(r, w / 2, h); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
+  const roundTop = (x, y, w, h, r) => { r = OS ? 0 : Math.min(r, w / 2, h); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
   function marker(shape, x, y, r, fill, stroke, sw) {
+    if (OS && stroke === '#ffffff') { stroke = fill; sw = 1; } // solid symbol, no white ring
     const a = `fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"`;
     const P2 = (pts) => `<path d="M${pts.map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join('L')}Z" ${a}/>`;
     const poly = (n, rr, rot) => Array.from({ length: n }, (_, i) => { const t = rot + (i * 2 * Math.PI) / n; return [x + rr * Math.cos(t), y + rr * Math.sin(t)]; });
@@ -814,7 +831,11 @@ td.nowrap { white-space: nowrap; }
     let g = '';
     for (const v of D.t.t) {
       if (v < D.lo - 1e-9 || v > D.hi + 1e-9) continue;
-      if (side === 'l') g += `<line x1="${x1}" x2="${x2}" y1="${sy(v)}" y2="${sy(v)}" stroke="${C_GRID}" stroke-width="1"/>`;
+      if (OS) {
+        // inward major tick, and a minor tick half a step above it
+        g += side === 'l' ? oTick(x1, sy(v), x1 + 7, sy(v)) : oTick(x2 - 7, sy(v), x2, sy(v));
+        const vm = v + D.t.step / 2; if (vm < D.hi - 1e-9) g += side === 'l' ? oTick(x1, sy(vm), x1 + 4, sy(vm), 1) : oTick(x2 - 4, sy(vm), x2, sy(vm), 1);
+      } else if (side === 'l') g += `<line x1="${x1}" x2="${x2}" y1="${sy(v)}" y2="${sy(v)}" stroke="${C_GRID}" stroke-width="1"/>`;
       g += tx(side === 'l' ? x1 - 8 : x2 + 8, sy(v) + 5, tickFmt(v, D.t.step), { a: side === 'l' ? 'end' : 'start', c: C_TICK });
     }
     return g;
@@ -825,7 +846,7 @@ td.nowrap { white-space: nowrap; }
     const rot = names.some((n, i) => lw[i] > slots[i] - 4);
     return { lw, rot, h: rot ? Math.max(0, ...lw) * Math.SQRT1_2 + 20 : 24 };
   }
-  const catLabels = (names, cx, y0, lay) => names.map((n, i) => (lay.rot
+  const catLabels = (names, cx, y0, lay, tick) => (OS && tick ? cx.map((x) => oTick(x, y0, x, y0 - 7)).join('') : '') + names.map((n, i) => (lay.rot
     ? `<text transform="translate(${cx[i] + 4} ${y0 + 14}) rotate(-45)" text-anchor="end" font-family='${SANS}' font-size="${TICK}" fill="${C_LAB}">${esc(n)}</text>`
     : tx(cx[i], y0 + 20, n, { a: 'middle' }))).join('');
   const clampW = (v, d) => Math.max(2, Math.min(200, +v || d));
@@ -1029,14 +1050,15 @@ td.nowrap { white-space: nowrap; }
         if (L2.kind === 'line') {
           if (!L2.noLine) leg += `<line x1="${lx}" x2="${lx + sw}" y1="${y - 4.5}" y2="${y - 4.5}" stroke="${L2.color}" stroke-width="2"${L2.dash ? ' stroke-dasharray="6 4"' : ''}/>`;
           leg += marker(L2.shape || 'circle', lx + sw / 2, y - 4.5, 5, L2.color, '#ffffff', 1.4);
-        } else leg += `<rect x="${lx}" y="${y - 11}" width="13" height="13" rx="3" fill="${L2.color}"/>`;
+        } else leg += `<rect x="${lx}" y="${y - 11}" width="13" height="13" rx="${OS ? 0 : 3}" fill="${L2.color}"${bs()}/>`;
         leg += `<text x="${lx + sw + 6}" y="${y}" font-family='${SANS}' font-size="14" fill="${C_LAB}">${esc(L2.label)}</text>`;
         lx += sw + 6 + tw + 22;
       });
       y += 14;
     } else y -= 10;
     const TW = Math.max(W, hasTitle ? textW(title, 18, true) + 4 : 0) + padX * 2, TH = y + H + 6;
-    const body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` + (hasTitle ? `<text x="${padX}" y="30" font-family='${SANS}' font-size="18" font-weight="600" fill="${C_INK}">${esc(title)}</text>` : '') + leg + `<g transform="translate(${padX} ${y})">${g}</g>`;
+    let body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>` + (hasTitle ? `<text x="${padX}" y="30" font-family='${SANS}' font-size="18" font-weight="600" fill="${C_INK}">${esc(title)}</text>` : '') + leg + `<g transform="translate(${padX} ${y})">${g}</g>`;
+    if (OS) body = originize(body);
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${body}</svg>`, body, w: TW, h: TH };
   }
   // horizontal placement of bar groups: centres px[i] measured from the plot's left edge
@@ -1075,11 +1097,12 @@ td.nowrap { white-space: nowrap; }
         const y1 = sy(acc), y2 = sy(acc + v); acc += v;
         const h = y1 - y2; if (h <= 0.2) return;
         const fill = colOf(s.ck, hcDef);
-        g += `<rect x="${x0.toFixed(2)}" y="${y2.toFixed(2)}" width="${w}" height="${h.toFixed(2)}" fill="${fill}" stroke="#ffffff" stroke-width="0.8"/>`;
+        g += `<rect x="${x0.toFixed(2)}" y="${y2.toFixed(2)}" width="${w}" height="${h.toFixed(2)}" fill="${fill}" ${OS ? 'stroke="#000000" stroke-width="1"' : 'stroke="#ffffff" stroke-width="0.8"'}/>`;
         if (F.labels === 'value' && h >= 15 && !blocked(i, (y1 + y2) / 2)) { const t = v.toFixed(1); if (textW(t, VAL - 1) <= w - 2) g += tx(x0 + w / 2, (y1 + y2) / 2 + 4.5, t, { a: 'middle', fs: VAL - 1, c: lum(fill) < 0.55 ? '#ffffff' : C_INK }); }
       });
     });
     g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${sy(D.lo)}" y2="${sy(D.lo)}" stroke="${C_AXIS}" stroke-width="1"/>`;
+    g += axBox(m.l, m.t, plotW);
     convs.forEach((c, j) => {
       const col = colOf(c.ck, hcDef), pts = cpts[j].filter(Boolean);
       if (F.convLine !== false && pts.length > 1) g += `<path d="M${pts.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join('L')}" fill="none" stroke="${col}" stroke-width="2"${j % 2 ? ' stroke-dasharray="6 4"' : ''}/>`;
@@ -1088,8 +1111,8 @@ td.nowrap { white-space: nowrap; }
         if (F.labels === 'value') g += `<text x="${p.x}" y="${p.y - 11}" text-anchor="middle" font-family='${SANS}' font-size="${VAL}" font-weight="600" fill="${col}" stroke="#ffffff" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">${p.v.toFixed(1)}</text>`;
       });
     });
-    if (TS) pxAll.forEach((x) => { g += `<line x1="${m.l + x}" x2="${m.l + x}" y1="${m.t + PH}" y2="${m.t + PH + 5}" stroke="${C_AXIS}" stroke-width="1"/>`; });
-    g += catLabels(names, pxAll.map((x) => m.l + x), m.t + PH, lay);
+    if (TS && !OS) pxAll.forEach((x) => { g += `<line x1="${m.l + x}" x2="${m.l + x}" y1="${m.t + PH}" y2="${m.t + PH + 5}" stroke="${C_AXIS}" stroke-width="1"/>`; });
+    g += catLabels(names, pxAll.map((x) => m.l + x), m.t + PH, lay, !!TS);
     if (xl.trim()) g += tx(m.l + plotW / 2, H - 10, xl, { a: 'middle', fs: LAB });
     g += yLab(20, m.t + PH / 2, yl, -90);
     if (D2) g += yLab(W - 16, m.t + PH / 2, y2l, 90);
@@ -1120,8 +1143,8 @@ td.nowrap { white-space: nowrap; }
         const v = vals[i][j], bx = m.l + px[i] - gw[i] / 2 + j * (w + inner), col = colOf(mm.ck, hcDef);
         if (v == null) return;
         const yv = sy(v);
-        if (v >= base) { if (yb - yv > 0.4) g += `<path d="${roundTop(bx, yv, w, yb - yv, Math.min(4, w / 3))}" fill="${col}"/>`; }
-        else g += `<rect x="${bx}" y="${yb}" width="${w}" height="${Math.max(0, yv - yb)}" fill="${col}"/>`;
+        if (v >= base) { if (yb - yv > 0.4) g += `<path d="${roundTop(bx, yv, w, yb - yv, Math.min(4, w / 3))}" fill="${col}"${bs()}/>`; }
+        else g += `<rect x="${bx}" y="${yb}" width="${w}" height="${Math.max(0, yv - yb)}" fill="${col}"${bs()}/>`;
         if (F.labels === 'value') {
           const t = v.toFixed(1), cx = bx + w / 2, ty = v >= base ? yv - 6 : yv + 16;
           g += vRot ? `<text transform="translate(${cx + VAL * 0.36} ${v >= base ? yv - 6 : yv + 6}) rotate(-90)" text-anchor="${v >= base ? 'start' : 'end'}" font-family='${SANS}' font-size="${VAL}" fill="${C_LAB}">${t}</text>` : tx(cx, ty, t, { a: 'middle', fs: VAL });
@@ -1129,6 +1152,7 @@ td.nowrap { white-space: nowrap; }
       });
     });
     g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${yb}" y2="${yb}" stroke="${C_AXIS}" stroke-width="1"/>`;
+    g += axBox(m.l, m.t, plotW);
     g += catLabels(names, px.map((x) => m.l + x), m.t + PH, lay);
     if (xl.trim()) g += tx(m.l + plotW / 2, H - 10, xl, { a: 'middle', fs: LAB });
     g += yLab(20, m.t + PH / 2, yl, -90);
@@ -1163,8 +1187,9 @@ td.nowrap { white-space: nowrap; }
     const W = m.l + plotW + m.r, H = m.t + PH + m.b;
     let g = yTicks(D, sy, m.l, m.l + plotW, 'l');
     g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${sy(D.lo)}" y2="${sy(D.lo)}" stroke="${C_AXIS}" stroke-width="1"/>`;
-    if (numeric) xD.t.t.filter((v) => v >= xD.lo - 1e-9 && v <= xD.hi + 1e-9).forEach((v) => { const x = m.l + sx(v); g += `<line x1="${x}" x2="${x}" y1="${m.t + PH}" y2="${m.t + PH + 5}" stroke="${C_AXIS}" stroke-width="1"/>` + tx(x, m.t + PH + 22, tickFmt(v, xD.t.step), { a: 'middle', c: C_TICK }); });
-    else g += catLabels(names, rows.map((_, i) => m.l + sx(i)), m.t + PH, lay);
+    g += axBox(m.l, m.t, plotW);
+    if (numeric) xD.t.t.filter((v) => v >= xD.lo - 1e-9 && v <= xD.hi + 1e-9).forEach((v) => { const x = m.l + sx(v); g += `<line x1="${x}" x2="${x}" y1="${m.t + PH}" y2="${m.t + PH + (OS ? -7 : 5)}" stroke="${C_AXIS}" stroke-width="${OS ? 1.2 : 1}"/>` + tx(x, m.t + PH + 22, tickFmt(v, xD.t.step), { a: 'middle', c: C_TICK }); });
+    else g += catLabels(names, rows.map((_, i) => m.l + sx(i)), m.t + PH, lay, true);
     mets.forEach((mm, j) => {
       const col = colOf(mm.ck, hcDef), shape = SHAPES[j % SHAPES.length];
       const pts = rows.map((p) => [m.l + sx(p.x), p.v[j]]).filter((q) => q[1] != null).map(([x, v]) => [x, sy(v), v]);
@@ -1193,11 +1218,12 @@ td.nowrap { white-space: nowrap; }
     bars.forEach((B, i) => B.forEach((b, j) => {
       if (b.v == null) return;
       const bx = m.l + px[i] - gw / 2 + j * (bw + inner), yv = sy(b.v);
-      if (b.v >= base) { if (yb - yv > 0.4) g += `<path d="${roundTop(bx, yv, bw, yb - yv, Math.min(4, bw / 3))}" fill="${b.col}"/>`; }
-      else g += `<rect x="${bx}" y="${yb}" width="${bw}" height="${Math.max(0, yv - yb)}" fill="${b.col}"/>`;
+      if (b.v >= base) { if (yb - yv > 0.4) g += `<path d="${roundTop(bx, yv, bw, yb - yv, Math.min(4, bw / 3))}" fill="${b.col}"${bs()}/>`; }
+      else g += `<rect x="${bx}" y="${yb}" width="${bw}" height="${Math.max(0, yv - yb)}" fill="${b.col}"${bs()}/>`;
       if (F.labels === 'value') g += tx(bx + bw / 2, b.v >= base ? yv - 6 : yv + 16, b.v.toFixed(1), { a: 'middle', fs: textW(b.v.toFixed(1), VAL) > bw + 6 ? VAL - 2 : VAL });
     }));
     g += `<line x1="${m.l}" x2="${m.l + plotW}" y1="${yb}" y2="${yb}" stroke="${C_AXIS}" stroke-width="1"/>`;
+    g += axBox(m.l, m.t, plotW);
     g += catLabels(names, px.map((x) => m.l + x), m.t + PH, lay);
     if (xl.trim()) g += tx(m.l + plotW / 2, H - 10, xl, { a: 'middle', fs: LAB });
     g += yLab(20, m.t + PH / 2, yl, -90);
@@ -1207,6 +1233,7 @@ td.nowrap { white-space: nowrap; }
 
   function buildFig(i, opt) {
     const F = figList()[i]; if (!F) throw new Error('empty');
+    OS = figStyle() === 'origin';
     const f = F.type === 'bar' ? buildBar(F, opt) : F.type === 'line' ? buildLine(F, opt) : F.type === 'dist' ? buildDist(F, opt) : buildStack(F, opt);
     f.base = `TCD_fig${i + 1}_${F.type}${F.title && F.title.trim() ? '_' + safeName(F.title.trim()) : ''}${F.lang === 'en' ? '_en' : ''}`;
     return f;
@@ -1262,7 +1289,7 @@ td.nowrap { white-space: nowrap; }
     if (!$('#figCard')) return;
     const F = curFig(); syncItems(F);
     renderFigTabs();
-    $('#figCtl1').innerHTML = `<div class="field">種類 ${segH('ftype', FTYPES, F.type)}</div><div class="field">標籤語言 ${segH('flang', [['zh', '中文'], ['en', 'English']], F.lang)}</div>`;
+    $('#figCtl1').innerHTML = `<div class="field">種類 ${segH('ftype', FTYPES, F.type)}</div><div class="field">標籤語言 ${segH('flang', [['zh', '中文'], ['en', 'English']], F.lang)}</div><div class="field">圖片風格 ${segH('fstyle', [['origin', 'Origin'], ['default', '原本']], figStyle())}<span class="muted small">所有圖共用</span></div>`;
     const basis = `<div class="field">選擇性基準 ${segH('fbasis', [['tot', '含 CO'], ['cofree', '扣除 CO']], F.basis)}<span class="muted small">${F.basis === 'cofree' ? '烴類合計 = 100%（你 Excel 的算法）' : 'CO + 烴類合計 = 100%'}</span></div>`;
     const split = `<label class="field" for="fSplit"><input type="checkbox" id="fSplit"${F.split816 ? ' checked' : ''}> 差減項拆成 C5–C7 / C8–C16 / C16+（依液相比例）</label>`;
     let c2 = '';
@@ -1397,7 +1424,7 @@ td.nowrap { white-space: nowrap; }
     const ys = []; let ay = pad + titleH; rowH.forEach((h, r) => { ys[r] = ay; if (h > 0) ay += h + gap; });
     const TW = ax - gap + pad, TH = ay - gap + pad;
     let body = `<rect width="${TW}" height="${TH}" fill="#ffffff"/>`;
-    if (titleH) body += `<text x="${TW / 2}" y="${pad + 26}" text-anchor="middle" font-family='${SANS}' font-size="24" font-weight="600" fill="${C_INK}">${esc(G.title.trim())}</text>`;
+    if (titleH) { const tt = `<text x="${TW / 2}" y="${pad + 26}" text-anchor="middle" font-family='${SANS}' font-size="24" font-weight="600" fill="${C_INK}">${esc(G.title.trim())}</text>`; body += figStyle() === 'origin' ? originize(tt) : tt; }
     figs.forEach((f, i) => { if (!f) return; const c = i % G.n, r = Math.floor(i / G.n); body += `<g transform="translate(${xs[c] + (colW[c] - f.w) / 2} ${ys[r]})">${f.body}</g>`; });
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${TW}" height="${TH}" viewBox="0 0 ${TW} ${TH}">${body}</svg>`, w: TW, h: TH, base: `TCD_grid_${G.m}x${G.n}` };
   }
@@ -1493,6 +1520,7 @@ td.nowrap { white-space: nowrap; }
       toast(`已刪除圖 ${i + 1}`, { label: '上一步', fn: () => step(-1) }); return true;
     }
     if ((b = t.closest('[data-ftype]'))) { F.type = b.dataset.ftype; if ((F.type === 'bar' || F.type === 'line') && !(F.metrics && F.metrics.length)) F.metrics = ['Xco2', 'Xh2']; refreshFig(); return true; }
+    if ((b = t.closest('[data-fstyle]'))) { state.figStyle = b.dataset.fstyle; refreshFig(); return true; }
     if ((b = t.closest('[data-flang]'))) { F.lang = b.dataset.flang; refreshFig(); return true; }
     if ((b = t.closest('[data-fbasis]'))) { F.basis = b.dataset.fbasis; refreshFig(); return true; }
     if ((b = t.closest('[data-flab]'))) { F.labels = b.dataset.flab; refreshFig(); return true; }
