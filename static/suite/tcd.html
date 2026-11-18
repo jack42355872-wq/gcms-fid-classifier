@@ -405,21 +405,22 @@ td.nowrap { white-space: nowrap; }
   const f2 = (x, d = 2) => (x == null || !isFinite(x) ? '—' : (+x).toFixed(d));
   const SAMPLE = "Peak#\tRet.Time\tArea\tHeight\tConc.\tUnits\tMark\tCompound ID#\tCompound Name\tFinal Time\n1\t0.524\t68058.2\t15013.6\t13.98642\tppm\t\t1\tRT0.550\t0.556\n2\t0.669\t24146.8\t5254\t4.96233\tppm\tV\t2\tRT0.684\t0.687\n3\t0.904\t321200.2\t49040.6\t66.00882\t\tV\t\t\t1.121\n4\t2.062\t3611.7\t316.7\t0.74222\t\t\t\t\t1.559\n5\t2.438\t1630.9\t123.8\t0.33516\t\t\t\t\t2.147\n6\t4.046\t6057.2\t295.7\t1.24481\t\t\t\t\t2.675\n7\t5.431\t10095.9\t457\t2.07478\tppm\t\t3\tRT5.179\t3.584\n8\t6.133\t25125.7\t797.9\t5.16349\t\tV\t\t\t4.971\n9\t10.616\t14164.3\t249.8\t2.91087\tppm\t\t5\tRT10.776\t5.624\n10\t14.789\t12511\t161\t2.5711\t\tV\t\t\t6.226";
   const DEFAULT_METHOD = () => [
-    { id: 'm1', name: 'Air', rt: 0.524, win: 0.08, f: 0.00003, role: 'inert', n: 0 },
-    { id: 'm2', name: 'CH4', rt: 0.669, win: 0.08, f: 0.00008, role: 'hc', n: 1 },
-    { id: 'm3', name: 'CO2', rt: 0.904, win: 0.15, f: 0.00007, role: 'co2', n: 1 },
+    { id: 'm1', name: 'Air', rt: 0.524, win: 0.08, f: 3.409e-5, role: 'inert', n: 0 },
+    { id: 'm2', name: 'CH4', rt: 0.669, win: 0.08, f: 7.543e-5, role: 'hc', n: 1 },
+    { id: 'm3', name: 'CO2', rt: 0.904, win: 0.15, f: 6.936e-5, role: 'co2', n: 1 },
     { id: 'm8', name: 'C2H4', rt: 1.4, win: 0.15, f: 0.000081, role: 'hc', n: 2 },
-    { id: 'm4', name: 'O2', rt: 4.046, win: 0.2, f: 0.0001, role: 'inert', n: 0 },
-    { id: 'm5', name: 'C3H8', rt: 5.431, win: 0.2, f: 0.0001, role: 'hc', n: 3 },
-    { id: 'm6', name: 'C2H6', rt: 6.133, win: 0.2, f: 0.00005, role: 'hc', n: 2 },
-    { id: 'm7', name: 'CO', rt: 14.789, win: 0.3, f: 0.0002, role: 'co', n: 1 },
-    { id: 'm9', name: 'C4H10', rt: 20.8, win: 0.4, f: 0.00005, role: 'hc', n: 4 },
+    { id: 'm4', name: 'O2', rt: 4.046, win: 0.2, f: 9.886e-5, role: 'inert', n: 0 },
+    { id: 'm5', name: 'C3H8', rt: 5.431, win: 0.2, f: 5.125e-5, role: 'hc', n: 3 },
+    { id: 'm6', name: 'C2H6', rt: 6.133, win: 0.2, f: 5.145e-5, role: 'hc', n: 2 },
+    { id: 'm10', name: 'CH4', rt: 10.616, win: 0.3, f: 2.0702e-4, role: 'hc', n: 1 },
+    { id: 'm7', name: 'CO', rt: 14.789, win: 0.3, f: 0.00017407, role: 'co', n: 1 },
+    { id: 'm9', name: 'C4H10', rt: 20.8, win: 0.4, f: 4.8111e-5, role: 'hc', n: 4 },
   ];
   const ROLES = [['co2', 'CO₂ 反應物'], ['h2', 'H₂ 實測'], ['co', 'CO'], ['hc', '烴類'], ['inert', '空氣（扣除）'], ['is', '內標'], ['ignore', '不使用']];
   const fresh = () => ({
     cond: { T: 300, P: 20, GHSV: 3600, TOS: '' },
     flows: { h2: 240, co2: 66.7, out: 170, is: 0, outMode: 'direct' },
-    h2Mode: 'diff', h2Conc: '', liq57: '', liqC816: 87.14, liq16p: '', restLabel: '', mig2: true,
+    h2Mode: 'diff', h2Conc: '', liq57: '', liqC816: 87.14, liq16p: '', restLabel: '', mig2: true, mig3: true,
     method: DEFAULT_METHOD(), paste: SAMPLE, ov: {}, runs: [], curRun: null,
   });
   const LS = 'tcd-tool-v1', LSH = 'tcd-tool-hist-v1';
@@ -439,6 +440,16 @@ td.nowrap { white-space: nowrap; }
     if (!('liq57' in state)) state.liq57 = '';
     if (!('liq16p' in state)) state.liq16p = '';
     state.mig2 = true;
+  }
+
+  // one-time update (mig3): new response factors; CH4 second peak added as a separate row with the same name (areas are summed per name)
+  if (!state.mig3) {
+    const RF = { Air: 3.409e-5, CH4: 7.543e-5, CO2: 6.936e-5, O2: 9.886e-5, C3H8: 5.125e-5, C2H6: 5.145e-5, CO: 1.7407e-4, C4H10: 4.8111e-5 };
+    let seen = false;
+    state.method.forEach((m) => { const k = String(m.name).trim(); if (k in RF && !(k === 'CH4' && seen)) { m.f = RF[k]; if (k === 'CH4') seen = true; } });
+    if (state.method.filter((m) => String(m.name).trim() === 'CH4').length < 2 && !state.method.some((m) => m.id === 'm10')) state.method.push({ id: 'm10', name: 'CH4', rt: 10.616, win: 0.3, f: 2.0702e-4, role: 'hc', n: 1 });
+    state.method.sort((a, b) => a.rt - b.rt);
+    state.mig3 = true;
   }
 
   // ---------- undo / redo (whole state is small, so snapshots are the full JSON) ----------
@@ -660,7 +671,7 @@ td.nowrap { white-space: nowrap; }
     const t = e.target;
     if (figClick(t)) return;
     const om = t.closest('[data-om]'); if (om) { state.flows.outMode = om.dataset.om; renderAll(true); return; }
-    const h2 = t.closest('[data-h2]'); if (h2) { if (h2.dataset.h2 === 'input' && state.h2Mode !== 'input' && (state.h2Conc === '' || state.h2Conc == null) && R && R.h2 && isFinite(R.h2.raw)) state.h2Conc = +R.h2.raw.toFixed(4); state.h2Mode = h2.dataset.h2; if (h2.dataset.h2 === 'measured' && !state.method.some((m) => m.role === 'h2')) toast('實測模式需要在校正方法裡新增一列 H₂（角色選「H₂（實測）」）'); renderAll(true); return; }
+    const h2 = t.closest('[data-h2]'); if (h2) { state.h2Mode = h2.dataset.h2; if (h2.dataset.h2 === 'measured' && !state.method.some((m) => m.role === 'h2')) toast('實測模式需要在校正方法裡新增一列 H₂（角色選「H₂（實測）」）'); renderAll(true); return; }
     const md = t.closest('[data-mdel]'); if (md) { const i = +md.dataset.mdel, gone = state.method[i]; state.method.splice(i, 1); renderAll(true); toast(`已刪除「${gone.name}」`, { label: '上一步', fn: () => step(-1) }); return; }
     if (t.id === 'btnAddRow') { state.method.push({ id: 'm' + Date.now().toString(36), name: '新成分', rt: 0, win: 0.15, f: 0.0001, role: 'hc', n: 1 }); renderAll(true); return; }
     if (t.id === 'btnResetMethod') { state.method = DEFAULT_METHOD(); state.ov = {}; renderAll(true); toast('已還原校正方法', { label: '上一步', fn: () => step(-1) }); return; }

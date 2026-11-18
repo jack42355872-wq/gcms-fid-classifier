@@ -40,6 +40,17 @@ PATCHES = {
         # Label by file name unless the sheet name actually says something.
         "label: t.sheet || file.name.replace(/\\.[^.]+$/, ''),",
         "label: (t.sheet && !/^sheet\\d*$/i.test(t.sheet)) ? t.sheet : file.name.replace(/\\.[^.]+$/, ''),",
+    ), (
+        # 2026-11-18 artifact: clicking a fit point to exclude it calls hideTip(), which is declared nowhere in
+        # the module -> "ReferenceError: hideTip is not defined", thrown before render(), so the click appears
+        # to do nothing. His 11-15 single-file version used tipEl.hidden = true (tipEl is the module's tooltip).
+        "f.ex = [...ex].sort((x, y) => x - y); hideTip && hideTip(); render(); return;",
+        "f.ex = [...ex].sort((x, y) => x - y); tipEl.hidden = true; render(); return;",
+    ), (
+        # Same artifact: the clickable point got a second style="..." attribute, which the HTML parser ignores,
+        # so the pointer cursor was lost. Use the SVG presentation attribute, as the 11-15 version did.
+        ' data-exn="${o.key}:${p.n}" style="fill:transparent;cursor:pointer"',
+        ' data-exn="${o.key}:${p.n}" cursor="pointer"',
     )],
 }
 
